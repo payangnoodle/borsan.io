@@ -787,6 +787,25 @@
       }
       const menuItems = ref(loadedMenuItems);
 
+      const normalizeGroup = (g, gIdx = 0) => {
+        const gid = g.id || ('grp_' + gIdx);
+        return {
+          id: String(gid),
+          name: g.name || 'ตัวเลือก',
+          is_multiple_choice: g.is_multiple_choice !== undefined ? (g.is_multiple_choice === true || g.is_multiple_choice === 'true') : (g.type === 'multiple'),
+          options: (g.options || []).map((opt, oIdx) => {
+            const optName = typeof opt === 'string' ? opt : (opt.name || ('ตัวเลือก ' + (oIdx + 1)));
+            const optId = (opt && opt.id) ? opt.id : ('opt_' + gid + '_' + oIdx);
+            const extraPrice = parseFloat(opt.extra_price !== undefined ? opt.extra_price : (opt.extra !== undefined ? opt.extra : 0)) || 0;
+            return {
+              id: String(optId),
+              name: optName,
+              extra_price: extraPrice
+            };
+          })
+        };
+      };
+
       const configOptionGroups = (window.WPOS_CONFIG && Array.isArray(window.WPOS_CONFIG.DEFAULT_OPTION_GROUPS)) ? window.WPOS_CONFIG.DEFAULT_OPTION_GROUPS : [];
       const defaultOptionGroups = [];
 
@@ -795,16 +814,7 @@
         ? loadedStoredGroups
         : configOptionGroups;
       const normalizedOptionGroups = (groupsToNormalize && Array.isArray(groupsToNormalize))
-        ? groupsToNormalize.map(g => ({
-            id: g.id,
-            name: g.name,
-            is_multiple_choice: g.is_multiple_choice !== undefined ? g.is_multiple_choice : (g.type === 'multiple'),
-            options: (g.options || []).map((opt, oIdx) => ({
-              id: opt.id || ('opt_' + g.id + '_' + oIdx),
-              name: opt.name,
-              extra_price: opt.extra_price !== undefined ? opt.extra_price : (opt.extra || 0)
-            }))
-          }))
+        ? groupsToNormalize.map((g, gIdx) => normalizeGroup(g, gIdx))
         : defaultOptionGroups;
       const optionGroups = ref(normalizedOptionGroups);
 
@@ -833,7 +843,8 @@
 
       const activeItemOptionGroups = computed(() => {
         if (!activeItem.value || !activeItem.value.optionGroupIds) return [];
-        return optionGroups.value.filter(g => activeItem.value.optionGroupIds.includes(g.id));
+        const filtered = optionGroups.value.filter(g => activeItem.value.optionGroupIds.includes(g.id));
+        return filtered.map((g, idx) => normalizeGroup(g, idx));
       });
 
       const handleMenuItemClick = (item) => {
@@ -850,7 +861,7 @@
 
         activeItemOptionGroups.value.forEach(grp => {
           if (!grp.is_multiple_choice && grp.options && grp.options.length > 0) {
-            selectedOptions.value[grp.id] = grp.options[0].id;
+            selectedOptions.value[grp.id] = String(grp.options[0].id);
           } else if (grp.is_multiple_choice) {
             selectedOptions.value[grp.id] = [];
           }
@@ -860,27 +871,33 @@
       };
 
       const isOptionSelected = (group, opt) => {
+        if (!opt || !opt.id) return false;
+        const optId = String(opt.id);
         if (!group.is_multiple_choice) {
-          return selectedOptions.value[group.id] === opt.id;
+          return String(selectedOptions.value[group.id] || '') === optId;
         } else {
-          const arr = selectedOptions.value[group.id] || [];
-          return arr.includes(opt.id);
+          const arr = selectedOptions.value[group.id];
+          return Array.isArray(arr) && arr.map(String).includes(optId);
         }
       };
 
       const selectSingleOption = (group, opt) => {
-        selectedOptions.value[group.id] = opt.id;
+        if (!opt || !opt.id) return;
+        selectedOptions.value[group.id] = String(opt.id);
       };
 
       const toggleMultiOption = (group, opt) => {
-        if (!selectedOptions.value[group.id]) {
+        if (!opt || !opt.id) return;
+        const optId = String(opt.id);
+        if (!Array.isArray(selectedOptions.value[group.id])) {
           selectedOptions.value[group.id] = [];
         }
-        const idx = selectedOptions.value[group.id].indexOf(opt.id);
+        const arr = selectedOptions.value[group.id];
+        const idx = arr.map(String).indexOf(optId);
         if (idx >= 0) {
-          selectedOptions.value[group.id].splice(idx, 1);
+          arr.splice(idx, 1);
         } else {
-          selectedOptions.value[group.id].push(opt.id);
+          arr.push(optId);
         }
       };
 
@@ -889,13 +906,13 @@
         let base = activeItem.value.delivery_price || activeItem.value.price || 0;
         activeItemOptionGroups.value.forEach(grp => {
           if (!grp.is_multiple_choice) {
-            const selectedId = selectedOptions.value[grp.id];
-            const opt = grp.options.find(o => o.id === selectedId);
+            const selectedId = String(selectedOptions.value[grp.id] || '');
+            const opt = grp.options.find(o => String(o.id) === selectedId);
             if (opt) base += (opt.extra_price || 0);
           } else {
-            const selectedIds = selectedOptions.value[grp.id] || [];
+            const selectedIds = (selectedOptions.value[grp.id] || []).map(String);
             selectedIds.forEach(id => {
-              const opt = grp.options.find(o => o.id === id);
+              const opt = grp.options.find(o => String(o.id) === id);
               if (opt) base += (opt.extra_price || 0);
             });
           }
@@ -932,12 +949,13 @@
         const textParts = [];
         activeItemOptionGroups.value.forEach(grp => {
           if (!grp.is_multiple_choice) {
-            const opt = grp.options.find(o => o.id === selectedOptions.value[grp.id]);
+            const selId = String(selectedOptions.value[grp.id] || '');
+            const opt = grp.options.find(o => String(o.id) === selId);
             if (opt) textParts.push(opt.name);
           } else {
-            const ids = selectedOptions.value[grp.id] || [];
+            const ids = (selectedOptions.value[grp.id] || []).map(String);
             ids.forEach(id => {
-              const opt = grp.options.find(o => o.id === id);
+              const opt = grp.options.find(o => String(o.id) === id);
               if (opt) textParts.push(opt.name);
             });
           }
@@ -1393,12 +1411,7 @@
           // C. Fetch option groups
           const { data: optData } = await sb.from('option_groups').select('*');
           if (optData && optData.length > 0) {
-            optionGroups.value = optData.map(g => ({
-              id: g.id,
-              name: g.name,
-              is_multiple_choice: g.is_multiple_choice !== undefined ? g.is_multiple_choice : (g.type === 'multiple'),
-              options: g.options || []
-            }));
+            optionGroups.value = optData.map((g, gIdx) => normalizeGroup(g, gIdx));
             localStorage.setItem('wpos_option_groups', JSON.stringify(optionGroups.value));
           }
 

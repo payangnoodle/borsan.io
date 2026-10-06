@@ -1855,6 +1855,9 @@
                   <div class="flex items-center space-x-2">
                     <span class="text-brand-active font-extrabold">{{ group.name }}</span>
                     <span class="text-[11px] text-slate-400">({{ group.options ? group.options.length : 0 }} ตัวเลือก)</span>
+                    <button @click="toggleGroupChoiceType(group)" :class="(group.type === 'multiple' || group.is_multiple_choice) ? 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200' : 'bg-sky-100 text-sky-800 border-sky-300 hover:bg-sky-200'" class="text-[10px] border font-bold px-2 py-0.5 rounded-full transition cursor-pointer" title="คลิกเพื่อสลับระหว่างเลือกได้ 1 อย่าง (Radio) หรือหลายอย่าง (Checkbox)">
+                      {{ (group.type === 'multiple' || group.is_multiple_choice) ? '☑ เลือกได้หลายอย่าง' : '🔘 เลือกได้ 1 อย่าง' }}
+                    </button>
                   </div>
                   <div class="flex items-center space-x-2">
                     <button @click="addOptionToGroup(group)" class="text-xs bg-white hover:bg-slate-100 text-brand-active border border-slate-300 font-bold px-2 py-1 rounded-lg flex items-center space-x-1 transition shadow-sm">
@@ -5734,8 +5737,13 @@
             const rows = modifierGroups.value.map(g => ({
               id: g.id,
               name: g.name,
-              is_multiple_choice: g.type === 'multiple',
-              options: g.options || []
+              is_multiple_choice: g.type === 'multiple' || g.is_multiple_choice === true,
+              options: (g.options || []).map((o, idx) => ({
+                id: o.id || ('opt_' + g.id + '_' + idx),
+                name: o.name,
+                extra: o.extra !== undefined ? o.extra : (o.extra_price || 0),
+                extra_price: o.extra_price !== undefined ? o.extra_price : (o.extra || 0)
+              }))
             }));
             await sb.from('option_groups').upsert(rows);
           } catch (e) {
@@ -5790,23 +5798,31 @@
         group.options.splice(oIdx, 1);
         saveModifierGroups();
       };
+      const toggleGroupChoiceType = (group) => {
+        const isMulti = (group.type === 'multiple' || group.is_multiple_choice === true);
+        group.type = isMulti ? 'single' : 'multiple';
+        group.is_multiple_choice = !isMulti;
+        saveModifierGroups();
+      };
       const addOptionToGroup = (group) => {
         const name = prompt('กรุณากรอกชื่อตัวเลือกย่อยใหม่:');
         if (!name || !name.trim()) return;
         const extraStr = prompt('ราคาคิดเพิ่ม (บาท) ใส่ 0 หากไม่คิดเพิ่ม:', '0');
         const extra = parseFloat(extraStr) || 0;
         if (!group.options) group.options = [];
-        group.options.push({ name: name.trim(), extra });
+        const optId = 'opt_' + group.id + '_' + Date.now();
+        group.options.push({ id: optId, name: name.trim(), extra, extra_price: extra });
         saveModifierGroups();
       };
       const addNewModifierGroup = () => {
         const name = prompt('กรุณากรอกชื่อกลุ่มตัวเลือกใหม่ (เช่น ระดับความหวาน, ตัวเลือกเครื่องเคียง):');
         if (!name || !name.trim()) return;
-        const isMulti = confirm('อนุญาตให้เลือกได้หลายรายการ (Checkbox) หรือไม่?');
+        const isMulti = confirm('อนุญาตให้เลือกได้หลายรายการ (Checkbox) หรือไม่?\n(กด OK เพื่อเลือกได้หลายอย่าง / กด Cancel เพื่อเลือกได้ 1 อย่าง เช่น เส้น)');
         modifierGroups.value.push({
           id: 'grp_' + Date.now(),
           name: name.trim(),
           type: isMulti ? 'multiple' : 'single',
+          is_multiple_choice: isMulti,
           required: false,
           options: []
         });
@@ -8742,6 +8758,7 @@ END $$;`;
         deleteModifierGroup,
         deleteOptionFromGroup,
         addNewModifierGroup,
+        toggleGroupChoiceType,
         // Ordering & Cart
         orderMode,
         currentOrderTable,
