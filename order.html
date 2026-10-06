@@ -1288,7 +1288,7 @@
         const sb = window.getWposSupabaseClient ? window.getWposSupabaseClient() : null;
         if (sb) {
           try {
-            await sb.from('delivery_orders').insert([{
+            const { error: insErr } = await sb.from('delivery_orders').insert([{
               id: newOrder.id,
               customer_name: newOrder.customer_name,
               customer_phone: newOrder.customer_phone,
@@ -1302,9 +1302,11 @@
               delivery_fee: newOrder.delivery_fee,
               net_amount: newOrder.net_amount,
               payment_method: newOrder.payment_method,
-              payment_status: newOrder.payment_status,
               delivery_status: 'new'
             }]);
+            if (insErr) {
+              console.warn('Supabase insert delivery_orders failed:', insErr);
+            }
 
             // Broadcast on Supabase Realtime channel
             const rtChan = sb.channel('wpos_delivery_realtime');

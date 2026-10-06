@@ -107,13 +107,15 @@
           'bg-rose-500/20 text-rose-300 border border-rose-500/30': currentStatus === 'new',
           'bg-amber-500/20 text-amber-300 border border-amber-500/30': currentStatus === 'cooking',
           'bg-sky-500/20 text-sky-300 border border-sky-500/30 animate-pulse': currentStatus === 'delivering',
-          'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30': currentStatus === 'completed'
+          'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30': currentStatus === 'completed',
+          'bg-rose-500/20 text-rose-300 border border-rose-500/40': currentStatus === 'cancelled'
         }">
         <i class="fa-solid fa-circle text-[6px] mr-1.5" :class="{
           'text-rose-400': currentStatus === 'new',
           'text-amber-400': currentStatus === 'cooking',
           'text-sky-400': currentStatus === 'delivering',
-          'text-emerald-400': currentStatus === 'completed'
+          'text-emerald-400': currentStatus === 'completed',
+          'text-rose-400': currentStatus === 'cancelled'
         }"></i>
         {{ statusLabel }}
       </span>
@@ -122,6 +124,34 @@
   </header>
 
   <template v-if="order">
+  <!-- ========================================================
+       CANCELLED ORDER STATE BANNER
+  ======================================================== -->
+  <section v-if="currentStatus === 'cancelled'" class="p-4 space-y-3">
+    <div class="bg-red-50 border border-red-200 rounded-2xl p-6 text-center shadow-sm">
+      <div class="w-16 h-16 mx-auto mb-3 rounded-full bg-red-100 text-red-500 flex items-center justify-center text-3xl shadow-inner">
+        <i class="fa-solid fa-ban"></i>
+      </div>
+      <h2 class="text-base font-bold text-red-700">ทางร้านปฏิเสธคำสั่งซื้อนี้</h2>
+      <p class="text-xs text-red-600 mt-1 leading-relaxed">
+        ขออภัยในความไม่สะดวก ทางร้านไม่สามารถรับออเดอร์นี้ได้ในขณะนี้
+      </p>
+      
+      <div class="mt-4 flex flex-col sm:flex-row gap-2.5 justify-center">
+        <a href="order.html" class="inline-flex items-center justify-center px-5 py-2.5 bg-brand-active hover:bg-orange-600 text-white rounded-xl text-xs font-bold shadow transition">
+          <i class="fa-solid fa-arrow-left mr-1.5"></i> สั่งรายการอาหารใหม่
+        </a>
+        <a v-if="store.phone" :href="'tel:' + store.phone" class="inline-flex items-center justify-center px-5 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold shadow-sm transition">
+          <i class="fa-solid fa-phone mr-1.5 text-emerald-600"></i> โทรสอบถามร้านค้า ({{ store.phone }})
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================================================
+       ACTIVE ORDER TRACKING (STEPPER, MAP & RIDER)
+  ======================================================== -->
+  <template v-else>
   <!-- ========================================================
        2. STATUS STEPPER (4 STAGES)
   ======================================================== -->
@@ -234,10 +264,8 @@
     </div>
   </section>
 
-  <!-- ========================================================
-       4. RIDER & STORE CONTACT CARD
-  ======================================================== -->
-  <section class="px-4 py-2 space-y-3">
+  <!-- RIDER & STORE CONTACT CARD -->
+  <section class="px-4 pt-2">
     <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between shadow-sm">
       <div class="flex items-center space-x-3">
         <div class="w-12 h-12 rounded-2xl bg-brand-active text-white flex items-center justify-center font-bold text-xl shadow">
@@ -259,7 +287,13 @@
         </a>
       </div>
     </div>
+  </section>
+  </template>
 
+  <!-- ========================================================
+       4. ADDRESS & ORDER ITEMS SUMMARY
+  ======================================================== -->
+  <section class="px-4 py-2 space-y-3">
     <!-- Delivery Address Card -->
     <div class="p-3.5 bg-white border border-slate-200 rounded-2xl space-y-1.5 text-xs shadow-sm">
       <div class="font-bold text-slate-700 flex items-center">
@@ -371,7 +405,17 @@
             <div class="text-[11px] text-slate-500 mt-1">
               {{ (ord.items || []).map(i => i.name).join(', ').substring(0, 35) }}...
             </div>
-            <div class="text-[10px] text-slate-400 font-mono mt-0.5">฿{{ ord.net_amount }} • {{ ord.delivery_status }}</div>
+            <div class="text-[10px] font-mono mt-0.5 flex items-center space-x-1.5">
+              <span class="text-slate-500 font-bold">฿{{ ord.net_amount }}</span>
+              <span class="text-slate-300">•</span>
+              <span :class="{
+                'text-rose-500 font-bold': ord.delivery_status === 'new',
+                'text-amber-500 font-bold': ord.delivery_status === 'cooking',
+                'text-sky-500 font-bold': ord.delivery_status === 'delivering',
+                'text-emerald-500 font-bold': ord.delivery_status === 'completed',
+                'text-rose-600 font-bold': ord.delivery_status === 'cancelled'
+              }">{{ ord.delivery_status === 'cancelled' ? 'ร้านปฏิเสธ' : (ord.delivery_status === 'new' ? 'รอร้านรับ' : (ord.delivery_status === 'cooking' ? 'กำลังปรุง' : (ord.delivery_status === 'delivering' ? 'กำลังส่ง' : 'ส่งสำเร็จ'))) }}</span>
+            </div>
           </div>
           <i class="fa-solid fa-chevron-right text-slate-400 text-xs"></i>
         </div>
@@ -458,6 +502,7 @@
           case 'cooking': return 'กำลังปรุงอาหาร';
           case 'delivering': return 'กำลังนำส่ง';
           case 'completed': return 'จัดส่งสำเร็จ';
+          case 'cancelled': return 'ร้านปฏิเสธคำสั่งซื้อ';
           default: return 'รับออเดอร์แล้ว';
         }
       });
@@ -582,8 +627,22 @@
       };
 
       // --------------------------------------------------
+      // --------------------------------------------------
       // REALTIME CLOUD SYNC & ORDER DATA FETCH
       // --------------------------------------------------
+      const syncOrderToLocalStorage = (updatedOrder) => {
+        if (!updatedOrder || !updatedOrder.id) return;
+        const list = safeGetJSON('wpos_delivery_orders', []);
+        const idx = list.findIndex(o => o.id === updatedOrder.id);
+        if (idx !== -1) {
+          list[idx] = { ...list[idx], ...updatedOrder };
+        } else {
+          list.unshift({ ...updatedOrder });
+        }
+        deliveryOrders.value = list;
+        localStorage.setItem('wpos_delivery_orders', JSON.stringify(list));
+      };
+
       const fetchOrderData = async () => {
         const sb = window.getWposSupabaseClient ? window.getWposSupabaseClient() : null;
         if (sb && orderId.value) {
@@ -596,11 +655,14 @@
 
             if (!error && data) {
               order.value = data;
+              syncOrderToLocalStorage(data);
               if (!myOrderIds.includes(data.id)) {
                 myOrderIds.unshift(data.id);
                 localStorage.setItem('wpos_customer_order_ids', JSON.stringify(myOrderIds));
               }
-              initMap();
+              if (data.delivery_status !== 'cancelled') {
+                initMap();
+              }
             }
 
             const { data: storeData } = await sb
@@ -618,11 +680,15 @@
         }
       };
 
+      let pollTimer = null;
+
       onMounted(() => {
         fetchOrderData();
 
         setTimeout(() => {
-          initMap();
+          if (currentStatus.value !== 'cancelled') {
+            initMap();
+          }
         }, 150);
 
         // 1. BroadcastChannel (Cross-tab/Window Sync)
@@ -635,6 +701,7 @@
                 order.value.delivery_status = data.newStatus;
                 if (data.rider_name) order.value.rider_name = data.rider_name;
                 if (data.rider_phone) order.value.rider_phone = data.rider_phone;
+                syncOrderToLocalStorage(order.value);
               }
             } else if (data.type === 'RIDER_GPS_UPDATE' && (data.orderId === orderId.value || !data.orderId)) {
               updateRiderPosition(data.lat, data.lng);
@@ -646,6 +713,16 @@
         const sb = window.getWposSupabaseClient ? window.getWposSupabaseClient() : null;
         if (sb && orderId.value) {
           try {
+            const handleStatusUpdate = (newStatus, riderName, riderPhone) => {
+              if (order.value) {
+                if (newStatus) order.value.delivery_status = newStatus;
+                if (riderName !== undefined) order.value.rider_name = riderName;
+                if (riderPhone !== undefined) order.value.rider_phone = riderPhone;
+                syncOrderToLocalStorage(order.value);
+              }
+            };
+
+            // Room A: track-ORDERID
             sb.channel('track-' + orderId.value)
               .on('postgres_changes', {
                 event: 'UPDATE',
@@ -656,6 +733,7 @@
                 const updated = payload.new;
                 if (updated && order.value) {
                   Object.assign(order.value, updated);
+                  syncOrderToLocalStorage(order.value);
                 }
               })
               .on('broadcast', { event: 'gps_update' }, ({ payload }) => {
@@ -664,20 +742,26 @@
                 }
               })
               .on('broadcast', { event: 'status_update' }, ({ payload }) => {
-                if (payload && order.value) {
-                  if (payload.newStatus) order.value.delivery_status = payload.newStatus;
-                  if (payload.rider_name) order.value.rider_name = payload.rider_name;
-                  if (payload.rider_phone) order.value.rider_phone = payload.rider_phone;
+                if (payload && (payload.orderId === orderId.value || !payload.orderId)) {
+                  handleStatusUpdate(payload.newStatus, payload.rider_name, payload.rider_phone);
                 }
               })
               .subscribe();
 
+            // Room B: order-ORDERID (matches POS channel naming)
+            sb.channel('order-' + orderId.value)
+              .on('broadcast', { event: 'status_update' }, ({ payload }) => {
+                if (payload && (payload.orderId === orderId.value || !payload.orderId)) {
+                  handleStatusUpdate(payload.newStatus, payload.rider_name, payload.rider_phone);
+                }
+              })
+              .subscribe();
+
+            // Room C: Global delivery channel
             sb.channel('wpos_delivery_realtime')
               .on('broadcast', { event: 'status_update' }, ({ payload }) => {
                 if (payload && payload.orderId === orderId.value && order.value) {
-                  if (payload.newStatus) order.value.delivery_status = payload.newStatus;
-                  if (payload.rider_name) order.value.rider_name = payload.rider_name;
-                  if (payload.rider_phone) order.value.rider_phone = payload.rider_phone;
+                  handleStatusUpdate(payload.newStatus, payload.rider_name, payload.rider_phone);
                 }
               })
               .subscribe();
@@ -685,6 +769,17 @@
             console.warn('Supabase Realtime not subscribed in track.html:', e);
           }
         }
+
+        // 3. Periodic Background Polling (Every 3 seconds until completed or cancelled)
+        pollTimer = setInterval(async () => {
+          if (!orderId.value) return;
+          if (order.value && (order.value.delivery_status === 'completed' || order.value.delivery_status === 'cancelled')) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+            return;
+          }
+          await fetchOrderData();
+        }, 3000);
       });
 
       // --------------------------------------------------

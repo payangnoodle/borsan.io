@@ -6852,6 +6852,16 @@
                 rider_phone: payload.rider_phone || ''
               }
             });
+            sb.channel('track-' + payload.orderId).send({
+              type: 'broadcast',
+              event: 'status_update',
+              payload: {
+                orderId: payload.orderId,
+                newStatus: payload.newStatus,
+                rider_name: payload.rider_name || '',
+                rider_phone: payload.rider_phone || ''
+              }
+            });
 
             // 2. Global delivery channel broadcast for riders & POS
             sb.channel('wpos_delivery_realtime').send({
