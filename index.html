@@ -3703,12 +3703,13 @@
       <!-- Receipt Body -->
       <div class="p-5 overflow-y-auto space-y-3 font-mono text-slate-800 bg-white border-b">
         <div class="text-center space-y-1">
-          <div v-if="store.logo_url" class="w-12 h-12 mx-auto rounded-xl overflow-hidden border border-slate-200 mb-1">
-            <img :src="store.logo_url" class="w-full h-full object-cover">
+          <div v-if="store.logo_url && store.show_logo_on_receipt !== false" class="mx-auto flex items-center justify-center mb-1.5">
+            <img :src="store.logo_url" class="w-16 h-16 object-contain">
           </div>
-          <div class="font-bold text-sm">{{ store.name }}</div>
-          <div class="text-[10px] text-slate-500">{{ store.address }}</div>
-          <div class="text-[10px] text-slate-500">โทร: {{ store.phone }} | Tax ID: {{ store.tax_id }}</div>
+          <div class="font-bold text-sm">{{ store.name || 'ชื่อร้านอาหาร' }}</div>
+          <div v-if="store.branch_name && store.branch_name !== 'สาขาหลัก'" class="text-[10px] text-slate-500">{{ store.branch_name }}</div>
+          <div v-if="store.address" class="text-[10px] text-slate-500">{{ store.address }}</div>
+          <div v-if="store.phone" class="text-[10px] text-slate-500">โทร: {{ store.phone }}</div>
         </div>
 
         <div class="border-t border-b border-dashed border-slate-300 py-1.5 space-y-0.5 text-[11px]">
@@ -4850,14 +4851,15 @@
 
     <!-- 4. Standard Receipt (Robust Loop over items) -->
     <div v-else class="text-center font-mono space-y-1.5 text-xs">
-      <div v-if="store.logo_url && store.show_logo_on_receipt" class="w-12 h-12 mx-auto mb-1 rounded-full overflow-hidden border border-black/30">
-        <img :src="store.logo_url" alt="Logo" class="w-full h-full object-cover">
+      <div v-if="store.logo_url && store.show_logo_on_receipt !== false" class="mx-auto mb-1.5 flex items-center justify-center">
+        <img :src="store.logo_url" alt="Logo" class="w-20 h-20 object-contain">
       </div>
-      <div class="font-bold text-sm">{{ store.name }}</div>
-      <div class="text-[10px] text-black/80">{{ store.address }}</div>
-      <div class="text-[10px] text-black/80">โทร: {{ store.phone }} | Tax ID: {{ store.tax_id }}</div>
+      <div class="font-bold text-sm">{{ store.name || 'ชื่อร้านอาหาร' }}</div>
+      <div v-if="store.branch_name && store.branch_name !== 'สาขาหลัก'" class="text-[10px] text-black/70">{{ store.branch_name }}</div>
+      <div v-if="store.address" class="text-[10px] text-black/80">{{ store.address }}</div>
+      <div v-if="store.phone" class="text-[10px] text-black/80">โทร: {{ store.phone }}</div>
       <div class="border-t border-b border-black py-1 my-1 font-bold text-xs uppercase">
-        ใบเสร็จรับเงินอย่างย่อ / ใบกำกับภาษีอย่างย่อ
+        ใบเสร็จรับเงิน
       </div>
       <div class="flex justify-between text-[10px]">
         <span>เลขที่: <strong>{{ printSlipData.receipt_no || printSlipData.id }}</strong></span>
@@ -5126,7 +5128,7 @@
         is_store_delivery_open: true,
         receipt_header: 'ยินดีต้อนรับ / Welcome',
         receipt_footer: 'ขอบคุณที่ใช้บริการ / Thank You',
-        show_logo_on_receipt: false,
+        show_logo_on_receipt: true,
         branch_name: 'สาขาหลัก',
         branch_code: '00000',
         store_lat: 13.7563,
@@ -5212,6 +5214,7 @@
         const reader = new FileReader();
         reader.onload = (e) => {
           store.value.logo_url = e.target.result;
+          store.value.show_logo_on_receipt = true;
           saveStoreSettings();
         };
         reader.readAsDataURL(file);
