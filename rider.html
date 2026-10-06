@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ระบบคนขับส่งอาหาร (Rider Portal)</title>
+  <!-- Google Fonts: Prompt -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome 6 CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Supabase JS Client v2 with Failover -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    if (typeof supabase === 'undefined') {
+      document.write('<script src="https://unpkg.com/@supabase/supabase-js@2"><\/script>');
+    }
+  </script>
+  <!-- Global Configuration & Supabase Connection Bridge -->
+  <script src="config.js"></script>
+  <!-- Vue 3 Global Build CDN with Failover -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script>
+    if (typeof Vue === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"><\/script>');
+    }
+  </script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Prompt', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              active: '#086687',
+              accent: '#F97316',
+              green: '#10B981',
+              dark: '#1E293B',
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    [v-cloak] { display: none !important; }
+    body { font-family: 'Prompt', sans-serif; -webkit-tap-highlight-color: transparent; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen pb-20">
+
+<div id="app" v-cloak class="max-w-md mx-auto min-h-screen bg-white shadow-xl relative flex flex-col">
+
+  <!-- ========================================================
+       1. RIDER TOP BAR & PROFILE
+  ======================================================== -->
+  <header class="bg-brand-dark text-white p-4 sticky top-0 z-30 shadow-md">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center space-x-2.5">
+        <div class="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-bold text-lg shadow">
+          <i class="fa-solid fa-motorcycle"></i>
+        </div>
+        <div>
+          <div class="text-[10px] text-slate-400">ไรเดอร์ประจำร้าน:</div>
+          <div class="font-bold text-sm text-white flex items-center">
+            <span>{{ currentRiderName }}</span>
+            <button @click="isSelectRiderModalOpen = true" class="ml-2 text-xs text-sky-400 hover:text-sky-300">
+              <i class="fa-solid fa-pen-to-square"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Online Status Pill -->
+      <button @click="isOnline = !isOnline" 
+        :class="isOnline ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-slate-700 text-slate-400 border-slate-600'"
+        class="px-2.5 py-1 rounded-full text-xs font-bold border flex items-center transition">
+        <span class="w-2 h-2 rounded-full mr-1.5" :class="isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'"></span>
+        {{ isOnline ? 'พร้อมรับงาน' : 'พักเบรก' }}
+      </button>
+    </div>
+
+    <!-- Daily Quick Summary Cards -->
+    <div class="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-700/60 text-xs">
+      <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700 flex items-center justify-between">
+        <div>
+          <div class="text-[10px] text-slate-400">ส่งสำเร็จวันนี้</div>
+          <div class="font-bold text-sm text-white font-mono">{{ completedCountToday }} งาน</div>
+        </div>
+        <i class="fa-solid fa-circle-check text-emerald-400 text-base"></i>
+      </div>
+      <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700 flex items-center justify-between">
+        <div>
+          <div class="text-[10px] text-slate-400">เงินสด COD ที่ถือ</div>
+          <div class="font-bold text-sm text-amber-400 font-mono">฿{{ totalCashCodHeld.toLocaleString() }}</div>
+        </div>
+        <i class="fa-solid fa-money-bill-wave text-amber-400 text-base"></i>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========================================================
+       2. TABS: งานของฉัน / งานรอส่ง / ประวัติ
+  ======================================================== -->
+  <div class="bg-slate-50 border-b border-slate-200 p-2 flex space-x-1 text-xs sticky top-[138px] z-20">
+    <button @click="currentTab = 'active'"
+      :class="currentTab === 'active' ? 'bg-brand-active text-white font-bold shadow-sm' : 'text-slate-600 hover:bg-slate-200'"
+      class="flex-1 py-2 rounded-xl transition text-center flex items-center justify-center space-x-1.5">
+      <span>งานของฉัน</span>
+      <span v-if="myActiveOrders.length > 0" class="bg-rose-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+        {{ myActiveOrders.length }}
+      </span>
+    </button>
+    <button @click="currentTab = 'available'"
+      :class="currentTab === 'available' ? 'bg-brand-active text-white font-bold shadow-sm' : 'text-slate-600 hover:bg-slate-200'"
+      class="flex-1 py-2 rounded-xl transition text-center flex items-center justify-center space-x-1.5">
+      <span>ออเดอร์พร้อมส่ง</span>
+      <span v-if="availableOrders.length > 0" class="bg-sky-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+        {{ availableOrders.length }}
+      </span>
+    </button>
+    <button @click="currentTab = 'history'"
+      :class="currentTab === 'history' ? 'bg-brand-active text-white font-bold shadow-sm' : 'text-slate-600 hover:bg-slate-200'"
+      class="flex-1 py-2 rounded-xl transition text-center">
+      ประวัติงาน
+    </button>
+  </div>
+
+  <!-- ========================================================
+       3. ORDER CARDS LIST
+  ======================================================== -->
+  <main class="flex-1 p-3 space-y-3">
+    
+    <!-- TAB 1: MY ACTIVE ORDERS -->
+    <div v-if="currentTab === 'active'" class="space-y-3">
+      <div v-if="myActiveOrders.length === 0" class="text-center py-16 text-slate-400 space-y-2">
+        <i class="fa-solid fa-box-open text-4xl text-slate-300"></i>
+        <p class="text-xs">ยังไม่มีงานที่กำลังจัดส่ง</p>
+        <button @click="currentTab = 'available'" class="text-brand-active font-bold text-xs hover:underline">
+          ดูออเดอร์พร้อมส่งที่หน้าร้าน
+        </button>
+      </div>
+
+      <div v-for="order in myActiveOrders" :key="order.id" 
+        class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-xs flex flex-col space-y-3 p-4">
+        
+        <!-- Header Info -->
+        <div class="flex justify-between items-start pb-2 border-b border-slate-100">
+          <div>
+            <div class="font-bold text-sm text-slate-800 font-mono">#{{ order.id }}</div>
+            <div class="text-[10px] text-slate-400">{{ formatTime(order.created_at) }}</div>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-[10px] font-bold"
+            :class="order.delivery_status === 'delivering' ? 'bg-sky-100 text-sky-800 border border-sky-200 animate-pulse' : 'bg-amber-100 text-amber-800 border border-amber-200'">
+            <i class="fa-solid fa-motorcycle mr-1"></i>
+            {{ order.delivery_status === 'delivering' ? 'กำลังนำส่ง' : 'รับงานแล้ว' }}
+          </span>
+        </div>
+
+        <!-- Customer & Address -->
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <div class="font-bold text-slate-800 text-sm flex items-center">
+              <i class="fa-solid fa-user text-slate-400 mr-1.5 text-xs"></i>
+              {{ order.customer_name }}
+            </div>
+            <!-- 1-Click Call Customer -->
+            <a :href="'tel:' + order.customer_phone" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-3 py-1 rounded-xl text-xs flex items-center space-x-1 shadow-sm transition">
+              <i class="fa-solid fa-phone text-[10px]"></i>
+              <span>โทรหาลูกค้า</span>
+            </a>
+          </div>
+
+          <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-start space-x-2 text-slate-700">
+            <i class="fa-solid fa-location-dot text-rose-500 mt-0.5 shrink-0"></i>
+            <span class="leading-relaxed">{{ order.delivery_address }}</span>
+          </div>
+
+          <div v-if="order.delivery_note" class="p-2.5 bg-amber-50 rounded-xl border border-amber-200 flex items-start space-x-2 text-amber-900 text-xs">
+            <i class="fa-solid fa-comment-dots text-amber-600 mt-0.5 shrink-0"></i>
+            <div>
+              <span class="font-bold">โน้ตจากลูกค้า: </span>
+              <span>{{ order.delivery_note }}</span>
+            </div>
+          </div>
+
+          <div class="flex items-center space-x-3 text-[11px] text-slate-500 pt-1">
+            <span><i class="fa-solid fa-route text-sky-600 mr-1"></i>ระยะทาง: <strong>{{ order.distanceKm || 2.5 }} กม.</strong></span>
+            <span><i class="fa-solid fa-wallet text-amber-600 mr-1"></i>ยอดเก็บ COD: <strong class="text-slate-800">฿{{ order.payment_method === 'cod' ? order.net_amount : 0 }}</strong></span>
+          </div>
+        </div>
+
+        <!-- Items Checklist -->
+        <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100 space-y-1 text-slate-600">
+          <div class="font-bold text-[11px] text-slate-700 mb-1">รายการอาหารที่ต้องตรวจสอบ:</div>
+          <div v-for="(it, i) in order.items" :key="i" class="flex justify-between items-center text-[11px]">
+            <span>• {{ it.name }} x {{ it.quantity }}</span>
+            <span class="font-mono">฿{{ ((it.price || 0) * (it.quantity || 1)).toLocaleString() }}</span>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="space-y-2 pt-1">
+          <div class="grid grid-cols-2 gap-2">
+            <!-- 1-Click Google Maps Navigation -->
+            <button @click="openGoogleMaps(order)" class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2.5 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition">
+              <i class="fa-solid fa-diamond-turn-right text-sm"></i>
+              <span>เปิด Google Maps</span>
+            </button>
+
+            <!-- Toggle Live GPS Tracking -->
+            <button v-if="order.delivery_status !== 'delivering'" @click="startDelivery(order)" class="bg-brand-active hover:bg-sky-800 text-white font-bold py-2.5 px-3 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition">
+              <i class="fa-solid fa-play"></i>
+              <span>เริ่มออกส่ง (เปิด GPS)</span>
+            </button>
+            <div v-else class="bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center space-x-1">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping mr-1"></span>
+              <span>GPS ทำงานสด</span>
+            </div>
+          </div>
+
+          <!-- Complete Order Button -->
+          <button @click="completeDelivery(order)" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-xs shadow-md flex items-center justify-center space-x-2 transition">
+            <i class="fa-solid fa-circle-check text-sm"></i>
+            <span>จัดส่งสำเร็จ (ส่งมอบอาหารแล้ว)</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: AVAILABLE ORDERS READY TO PICK -->
+    <div v-else-if="currentTab === 'available'" class="space-y-3">
+      <div v-if="availableOrders.length === 0" class="text-center py-16 text-slate-400 space-y-2">
+        <i class="fa-solid fa-clipboard-check text-4xl text-slate-300"></i>
+        <p class="text-xs">ไม่มีออเดอร์ที่รอไรเดอร์ในขณะนี้</p>
+      </div>
+
+      <div v-for="order in availableOrders" :key="order.id"
+        class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-2.5 text-xs">
+        <div class="flex justify-between items-center">
+          <span class="font-bold text-slate-800 font-mono text-sm">#{{ order.id }}</span>
+          <span class="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full text-[10px]">
+            {{ order.delivery_status === 'cooking' ? 'ครัวพร้อมส่ง' : 'ออเดอร์ใหม่' }}
+          </span>
+        </div>
+
+        <div class="space-y-1 text-slate-600">
+          <div class="font-semibold text-slate-800">{{ order.customer_name }} ({{ order.customer_phone }})</div>
+          <div class="text-[11px] truncate"><i class="fa-solid fa-location-dot text-rose-500 mr-1"></i>{{ order.delivery_address }}</div>
+          <div class="text-[11px] text-slate-400">
+            {{ order.items ? order.items.length : 0 }} รายการ | ยอดสุทธิ ฿{{ (order.net_amount || 0).toLocaleString() }}
+          </div>
+        </div>
+
+        <button @click="claimOrder(order)" class="w-full bg-brand-active hover:bg-sky-800 text-white font-bold py-2.5 rounded-xl text-xs shadow transition flex items-center justify-center space-x-1.5">
+          <i class="fa-solid fa-hand-holding-hand"></i>
+          <span>กดรับงานนี้ไปส่ง</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- TAB 3: TODAY'S HISTORY -->
+    <div v-else class="space-y-3">
+      <div v-if="historyOrders.length === 0" class="text-center py-16 text-slate-400 space-y-2">
+        <i class="fa-solid fa-clock-rotate-left text-4xl text-slate-300"></i>
+        <p class="text-xs">ยังไม่มีประวัติการจัดส่งในวันนี้</p>
+      </div>
+
+      <div v-for="order in historyOrders" :key="order.id" class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-1.5 text-xs">
+        <div class="flex justify-between items-center">
+          <span class="font-bold font-mono text-slate-800">#{{ order.id }}</span>
+          <span class="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full text-[10px]">จัดส่งสำเร็จ</span>
+        </div>
+        <div class="text-slate-600">{{ order.customer_name }} - {{ order.delivery_address }}</div>
+        <div class="flex justify-between text-[11px] pt-1 border-t border-slate-100 text-slate-500 font-mono">
+          <span>ยอดเงิน: ฿{{ (order.net_amount || 0).toLocaleString() }}</span>
+          <span>{{ order.payment_method === 'cod' ? 'เก็บเงินสด (COD)' : 'โอนจ่ายแล้ว' }}</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ========================================================
+       4. CHANGE RIDER MODAL
+  ======================================================== -->
+  <div v-if="isSelectRiderModalOpen" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-4 space-y-3 shadow-2xl">
+      <div class="flex justify-between items-center pb-2 border-b border-slate-100">
+        <h3 class="font-bold text-sm text-slate-800 flex items-center">
+          <i class="fa-solid fa-helmet-safety text-brand-active mr-2"></i> เลือก / จัดการชื่อไรเดอร์
+        </h3>
+        <button @click="openAddRiderModal" class="bg-brand-active hover:bg-sky-800 text-white font-bold py-1 px-2.5 rounded-lg text-[11px] flex items-center space-x-1 shadow-sm transition">
+          <i class="fa-solid fa-plus text-[9px]"></i>
+          <span>+ เพิ่มชื่อ</span>
+        </button>
+      </div>
+
+      <div class="space-y-1.5 text-xs max-h-60 overflow-y-auto">
+        <div v-if="ridersList.length === 0" class="text-center py-6 text-slate-400">
+          <i class="fa-solid fa-helmet-safety text-2xl text-slate-300 mb-1 block"></i>
+          ยังไม่มีรายชื่อไรเดอร์ในระบบ<br>กดปุ่ม "+ เพิ่มชื่อ" ด้านบนเพื่อเพิ่มคนขับ
+        </div>
+        <div v-for="r in ridersList" :key="r.id || r.name" 
+          :class="currentRiderName === r.name ? 'bg-sky-50 border-brand-active text-brand-active font-bold' : 'bg-slate-50 border-slate-200 text-slate-700'"
+          class="p-2.5 rounded-xl border flex items-center justify-between transition">
+          <div @click="selectRider(r.name)" class="flex-1 cursor-pointer flex items-center space-x-2">
+            <i class="fa-solid fa-motorcycle text-xs"></i>
+            <div>
+              <div>{{ r.name }}</div>
+              <div v-if="r.phone" class="text-[10px] text-slate-400 font-mono font-normal">{{ r.phone }}</div>
+            </div>
+          </div>
+          <div class="flex items-center space-x-1">
+            <i v-if="currentRiderName === r.name" class="fa-solid fa-circle-check text-brand-active mr-1"></i>
+            <button @click="openEditRiderModal(r)" class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded transition" title="แก้ไขชื่อ">
+              <i class="fa-solid fa-pen text-[10px]"></i>
+            </button>
+            <button @click="deleteRider(r.id)" class="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition" title="ลบชื่อ">
+              <i class="fa-solid fa-trash text-[10px]"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-2 flex justify-end">
+        <button @click="isSelectRiderModalOpen = false" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-4 py-2 rounded-xl text-xs">
+          ปิดหน้าต่าง
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sub-Modal: Add / Edit Rider Name -->
+  <div v-if="isRiderFormOpen" class="fixed inset-0 z-[60] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-xs w-full p-4 space-y-3 shadow-2xl animate-fadeIn text-xs">
+      <h4 class="font-bold text-sm text-slate-800 flex items-center">
+        <i class="fa-solid fa-pen-to-square text-brand-active mr-2"></i>
+        {{ editingRider.id && ridersList.some(r => r.id === editingRider.id) ? 'แก้ไขชื่อไรเดอร์' : 'เพิ่มไรเดอร์ใหม่' }}
+      </h4>
+
+      <div>
+        <label class="block text-slate-700 font-bold mb-1">ชื่อไรเดอร์:</label>
+        <input v-model="editingRider.name" type="text" placeholder="เช่น พี่สมชาย, น้องบอย" class="w-full p-2 border border-slate-300 rounded-lg text-xs bg-white">
+      </div>
+
+      <div>
+        <label class="block text-slate-700 font-bold mb-1">เบอร์โทรศัพท์:</label>
+        <input v-model="editingRider.phone" type="text" placeholder="081-222-3344" class="w-full p-2 border border-slate-300 rounded-lg text-xs bg-white font-mono">
+      </div>
+
+      <div class="pt-2 flex justify-end space-x-2">
+        <button @click="isRiderFormOpen = false" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-lg text-xs">
+          ยกเลิก
+        </button>
+        <button @click="saveRiderForm" class="bg-brand-active hover:bg-sky-800 text-white font-bold px-4 py-1.5 rounded-lg text-xs shadow-sm">
+          บันทึก
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ========================================================
+     VUE 3 APPLICATION LOGIC
+======================================================== -->
+<script>
+  const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+
+  createApp({
+    setup() {
+      const safeGetJSON = (key, fallback) => {
+        try {
+          const item = localStorage.getItem(key);
+          return item ? JSON.parse(item) : fallback;
+        } catch (e) {
+          return fallback;
+        }
+      };
+
+      // FACTORY CLEAN CHECK: Auto-purge legacy demo data on fresh start
+      try {
+        const legacyStore = localStorage.getItem('wpos_store');
+        if (legacyStore && (legacyStore.includes('02-123-4567') || legacyStore.includes('0105559123456') || legacyStore.includes('สุขุมวิท') || legacyStore.includes('วงใน ฟู้ดสตอรี่'))) {
+          localStorage.removeItem('wpos_riders');
+          localStorage.removeItem('wpos_rider_name');
+          localStorage.removeItem('wpos_delivery_orders');
+        }
+      } catch (e) {}
+
+      const defaultRidersList = [];
+      const normalizeRiders = (list) => {
+        if (!Array.isArray(list)) return [];
+        return list.filter(r => r && r.id && !['rd_1', 'rd_2', 'rd_3'].includes(r.id) && !['สมชาย (ไรเดอร์ 1)', 'วิชัย (ไรเดอร์ 2)', 'ชาญชัย (ไรเดอร์ 3)'].includes(r.name));
+      };
+      const rawRiders = safeGetJSON('wpos_riders', defaultRidersList);
+      const ridersList = ref(normalizeRiders(rawRiders));
+      if (rawRiders.length !== ridersList.value.length) {
+        localStorage.setItem('wpos_riders', JSON.stringify(ridersList.value));
+      }
+
+      const storedRiderName = localStorage.getItem('wpos_rider_name');
+      const isStoredNameMock = ['สมชาย (ไรเดอร์ 1)', 'วิชัย (ไรเดอร์ 2)', 'ชาญชัย (ไรเดอร์ 3)'].includes(storedRiderName);
+      if (isStoredNameMock) {
+        localStorage.removeItem('wpos_rider_name');
+      }
+      const currentRiderName = ref(
+        (!isStoredNameMock && storedRiderName) 
+          ? storedRiderName 
+          : (ridersList.value[0]?.name || 'ยังไม่ระบุไรเดอร์')
+      );
+      const isOnline = ref(true);
+      const currentTab = ref('active'); // 'active' | 'available' | 'history'
+      const isSelectRiderModalOpen = ref(false);
+      const isRiderFormOpen = ref(false);
+      const editingRider = ref({ id: '', name: '', phone: '' });
+
+      const selectRider = (name) => {
+        currentRiderName.value = name || 'ยังไม่ระบุไรเดอร์';
+        if (name && name !== 'ยังไม่ระบุไรเดอร์') {
+          localStorage.setItem('wpos_rider_name', name);
+        } else {
+          localStorage.removeItem('wpos_rider_name');
+        }
+        isSelectRiderModalOpen.value = false;
+      };
+
+      const openAddRiderModal = () => {
+        editingRider.value = { id: 'rd_' + Date.now(), name: '', phone: '' };
+        isRiderFormOpen.value = true;
+      };
+
+      const openEditRiderModal = (rider) => {
+        editingRider.value = { ...rider };
+        isRiderFormOpen.value = true;
+      };
+
+      const saveRiderForm = () => {
+        if (!editingRider.value.name.trim()) {
+          alert('กรุณากรอกชื่อไรเดอร์');
+          return;
+        }
+        const idx = ridersList.value.findIndex(r => r.id === editingRider.value.id);
+        if (idx !== -1) {
+          const oldName = ridersList.value[idx].name;
+          ridersList.value[idx] = { ...editingRider.value };
+          if (currentRiderName.value === oldName) {
+            currentRiderName.value = editingRider.value.name;
+            localStorage.setItem('wpos_rider_name', editingRider.value.name);
+          }
+        } else {
+          ridersList.value.push({ ...editingRider.value });
+          currentRiderName.value = editingRider.value.name;
+          localStorage.setItem('wpos_rider_name', editingRider.value.name);
+        }
+        localStorage.setItem('wpos_riders', JSON.stringify(ridersList.value));
+        isRiderFormOpen.value = false;
+      };
+
+      const deleteRider = (riderId) => {
+        if (confirm('ต้องการลบไรเดอร์นี้ออกจากระบบใช่หรือไม่?')) {
+          ridersList.value = ridersList.value.filter(r => r.id !== riderId);
+          localStorage.setItem('wpos_riders', JSON.stringify(ridersList.value));
+          if (!ridersList.value.some(r => r.name === currentRiderName.value)) {
+            selectRider(ridersList.value[0]?.name || 'ยังไม่ระบุไรเดอร์');
+          }
+        }
+      };
+
+      // Load Delivery Orders
+      const deliveryOrders = ref(safeGetJSON('wpos_delivery_orders', []));
+      const refreshOrders = async () => {
+        const local = safeGetJSON('wpos_delivery_orders', []);
+        if (local && local.length > 0) deliveryOrders.value = local;
+
+        const sb = window.getWposSupabaseClient ? window.getWposSupabaseClient() : null;
+        if (sb) {
+          try {
+            const { data, error } = await sb
+              .from('delivery_orders')
+              .select('*')
+              .order('created_at', { ascending: false })
+              .limit(100);
+
+            if (!error && Array.isArray(data)) {
+              deliveryOrders.value = data;
+              saveOrders();
+            }
+          } catch (e) {
+            console.warn('Rider fetch delivery_orders error:', e);
+          }
+        }
+      };
+
+      // Filter tabs
+      const myActiveOrders = computed(() => {
+        return deliveryOrders.value.filter(o => 
+          (o.delivery_status === 'delivering' || o.delivery_status === 'cooking') && 
+          (o.rider_name === currentRiderName.value || !o.rider_name)
+        );
+      });
+
+      const availableOrders = computed(() => {
+        return deliveryOrders.value.filter(o => 
+          (o.delivery_status === 'cooking' || o.delivery_status === 'new') && 
+          (!o.rider_name || o.rider_name === '')
+        );
+      });
+
+      const historyOrders = computed(() => {
+        return deliveryOrders.value.filter(o => o.delivery_status === 'completed');
+      });
+
+      const completedCountToday = computed(() => historyOrders.value.length);
+
+      const totalCashCodHeld = computed(() => {
+        return historyOrders.value
+          .filter(o => o.payment_method === 'cod')
+          .reduce((sum, o) => sum + (o.net_amount || 0), 0);
+      });
+
+      const formatTime = (isoString) => {
+        if (!isoString) return '';
+        const d = new Date(isoString);
+        return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+      };
+
+      // --------------------------------------------------
+      // ACTIONS: CLAIM, NAVIGATE, START GPS, DELIVER
+      // --------------------------------------------------
+      const saveOrders = () => {
+        localStorage.setItem('wpos_delivery_orders', JSON.stringify(deliveryOrders.value));
+      };
+
+      const broadcastUpdate = async (type, payload) => {
+        try {
+          const channel = new BroadcastChannel('wpos_delivery_channel');
+          channel.postMessage({ type, ...payload });
+        } catch (e) {}
+
+        const sb = window.getWposSupabaseClient ? window.getWposSupabaseClient() : null;
+        if (sb && payload && payload.orderId) {
+          try {
+            const orderRoom = sb.channel('order-' + payload.orderId);
+            const generalRoom = sb.channel('wpos_delivery_realtime');
+
+            if (type === 'RIDER_GPS_UPDATE') {
+              orderRoom.send({
+                type: 'broadcast',
+                event: 'gps_update',
+                payload: {
+                  lat: payload.lat,
+                  lng: payload.lng,
+                  orderId: payload.orderId,
+                  rider_name: payload.rider_name
+                }
+              });
+            } else if (type === 'DELIVERY_STATUS_UPDATED') {
+              const statusData = {
+                orderId: payload.orderId,
+                newStatus: payload.newStatus,
+                rider_name: payload.rider_name || currentRiderName.value,
+                rider_phone: payload.rider_phone || ''
+              };
+
+              orderRoom.send({
+                type: 'broadcast',
+                event: 'status_update',
+                payload: statusData
+              });
+
+              generalRoom.send({
+                type: 'broadcast',
+                event: 'status_update',
+                payload: statusData
+              });
+
+              const updateDb = {
+                delivery_status: payload.newStatus,
+                updated_at: new Date().toISOString()
+              };
+              if (payload.rider_name) updateDb.rider_name = payload.rider_name;
+              if (payload.rider_phone) updateDb.rider_phone = payload.rider_phone;
+              await sb.from('delivery_orders').update(updateDb).eq('id', payload.orderId);
+            }
+          } catch (e) {
+            console.warn('Rider broadcast update error:', e);
+          }
+        }
+      };
+
+      const claimOrder = (order) => {
+        const riderObj = ridersList.value.find(r => r.name === currentRiderName.value);
+        const riderPhone = riderObj?.phone || '';
+        order.rider_name = currentRiderName.value;
+        order.rider_phone = riderPhone;
+        order.delivery_status = 'delivering';
+        saveOrders();
+        currentTab.value = 'active';
+
+        broadcastUpdate('DELIVERY_STATUS_UPDATED', {
+          orderId: order.id,
+          newStatus: 'delivering',
+          rider_name: currentRiderName.value,
+          rider_phone: riderPhone
+        });
+
+        startGpsBroadcast(order);
+      };
+
+      const openGoogleMaps = (order) => {
+        let dest = order.delivery_address;
+        if (order.customer_lat && order.customer_lng) {
+          dest = `${order.customer_lat},${order.customer_lng}`;
+        }
+        const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}`;
+        window.open(url, '_blank');
+      };
+
+      // GPS Live Watch
+      let watchId = null;
+      let gpsSimInterval = null;
+
+      const startGpsBroadcast = (order) => {
+        if (navigator.geolocation) {
+          watchId = navigator.geolocation.watchPosition(
+            (pos) => {
+              broadcastUpdate('RIDER_GPS_UPDATE', {
+                orderId: order.id,
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude,
+                rider_name: currentRiderName.value
+              });
+            },
+            (err) => {
+              console.warn('GPS hardware watch failed, using simulation mode:', err);
+              startSimulatedGps(order);
+            },
+            { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+          );
+        } else {
+          startSimulatedGps(order);
+        }
+      };
+
+      const startSimulatedGps = (order) => {
+        if (gpsSimInterval) clearInterval(gpsSimInterval);
+        const storeLat = 13.7563;
+        const storeLng = 100.5018;
+        const custLat = order.customer_lat || (storeLat - 0.012);
+        const custLng = order.customer_lng || (storeLng + 0.018);
+
+        let progress = 0;
+        gpsSimInterval = setInterval(() => {
+          progress += 0.05;
+          if (progress > 1) progress = 1;
+          const lat = storeLat + (custLat - storeLat) * progress;
+          const lng = storeLng + (custLng - storeLng) * progress;
+
+          broadcastUpdate('RIDER_GPS_UPDATE', {
+            orderId: order.id,
+            lat,
+            lng,
+            rider_name: currentRiderName.value
+          });
+
+          if (progress >= 1) clearInterval(gpsSimInterval);
+        }, 3000);
+      };
+
+      const startDelivery = (order) => {
+        order.delivery_status = 'delivering';
+        saveOrders();
+        broadcastUpdate('DELIVERY_STATUS_UPDATED', {
+          orderId: order.id,
+          newStatus: 'delivering',
+          rider_name: currentRiderName.value
+        });
+        startGpsBroadcast(order);
+      };
+
+      const completeDelivery = (order) => {
+        const isCod = order.payment_method === 'cod';
+        const msg = isCod 
+          ? `ยืนยันการจัดส่งออเดอร์ #${order.id}\nคุณได้เก็บเงินสดจากลูกค้า ฿${order.net_amount.toLocaleString()} แล้วใช่หรือไม่?`
+          : `ยืนยันการจัดส่งออเดอร์ #${order.id} เรียบร้อยแล้วใช่หรือไม่?`;
+        
+        if (!confirm(msg)) return;
+
+        order.delivery_status = 'completed';
+        saveOrders();
+
+        if (watchId) navigator.geolocation.clearWatch(watchId);
+        if (gpsSimInterval) clearInterval(gpsSimInterval);
+
+        broadcastUpdate('DELIVERY_STATUS_UPDATED', {
+          orderId: order.id,
+          newStatus: 'completed'
+        });
+
+        alert(`จัดส่งออเดอร์ #${order.id} สำเร็จเรียบร้อยแล้ว!`);
+      };
+
+      onMounted(() => {
+        // 1. Initial order fetch from Supabase/localStorage
+        refreshOrders();
+
+        // 2. Local BroadcastChannel
+        try {
+          const channel = new BroadcastChannel('wpos_delivery_channel');
+          channel.onmessage = (e) => {
+            refreshOrders();
+          };
+        } catch (e) {}
+
+        // 3. Supabase Realtime channel subscription
+        const sb = window.getWposSupabaseClient ? window.getWposSupabaseClient() : null;
+        if (sb) {
+          try {
+            sb.channel('wpos_delivery_realtime')
+              .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_orders' }, () => {
+                refreshOrders();
+              })
+              .on('broadcast', { event: 'new_order' }, () => {
+                refreshOrders();
+              })
+              .on('broadcast', { event: 'NEW_DELIVERY_ORDER' }, () => {
+                refreshOrders();
+              })
+              .on('broadcast', { event: 'status_update' }, (msg) => {
+                if (msg && msg.payload && msg.payload.orderId) {
+                  const target = deliveryOrders.value.find(o => o.id === msg.payload.orderId);
+                  if (target) {
+                    if (msg.payload.newStatus) target.delivery_status = msg.payload.newStatus;
+                    if (msg.payload.rider_name) target.rider_name = msg.payload.rider_name;
+                    if (msg.payload.rider_phone) target.rider_phone = msg.payload.rider_phone;
+                    saveOrders();
+                  } else {
+                    refreshOrders();
+                  }
+                }
+              })
+              .subscribe();
+          } catch (e) {
+            console.warn('Rider realtime error:', e);
+          }
+        }
+      });
+
+      onUnmounted(() => {
+        if (watchId) navigator.geolocation.clearWatch(watchId);
+        if (gpsSimInterval) clearInterval(gpsSimInterval);
+      });
+
+      return {
+        ridersList,
+        currentRiderName,
+        isOnline,
+        currentTab,
+        isSelectRiderModalOpen,
+        isRiderFormOpen,
+        editingRider,
+        selectRider,
+        openAddRiderModal,
+        openEditRiderModal,
+        saveRiderForm,
+        deleteRider,
+        myActiveOrders,
+        availableOrders,
+        historyOrders,
+        completedCountToday,
+        totalCashCodHeld,
+        formatTime,
+        claimOrder,
+        openGoogleMaps,
+        startDelivery,
+        completeDelivery
+      };
+    }
+  }).mount('#app');
+</script>
+
+</body>
+</html>

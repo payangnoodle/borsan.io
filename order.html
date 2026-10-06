@@ -1,0 +1,1469 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>สั่งอาหารเดลิเวอรี่ออนไลน์</title>
+  <!-- Google Fonts: Prompt -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome 6 CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Leaflet.js CSS & JS CDN (100% Free OpenStreetMap) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Supabase JS Client v2 with Failover -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    if (typeof supabase === 'undefined') {
+      document.write('<script src="https://unpkg.com/@supabase/supabase-js@2"><\/script>');
+    }
+  </script>
+  <!-- Global Configuration & Supabase Connection Bridge -->
+  <script src="config.js"></script>
+  <!-- Vue 3 Global Build CDN with Failover -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script>
+    if (typeof Vue === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"><\/script>');
+    }
+  </script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Prompt', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              active: '#086687',
+              accent: '#F97316',
+              green: '#10B981',
+              dark: '#1E293B',
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    [v-cloak] { display: none !important; }
+    body { font-family: 'Prompt', sans-serif; -webkit-tap-highlight-color: transparent; }
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    #pickerMap { height: 100%; width: 100%; z-index: 10; }
+    .center-pin-container {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -100%);
+      z-index: 500;
+      pointer-events: none;
+    }
+    @keyframes pinBounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+    .pin-bounce {
+      animation: pinBounce 1.2s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-24">
+
+<div id="app" v-cloak class="max-w-md mx-auto min-h-screen bg-white shadow-xl relative flex flex-col">
+
+  <!-- ========================================================
+       1. RESTAURANT HEADER BANNER
+  ======================================================== -->
+  <header class="bg-brand-dark text-white p-4 relative overflow-hidden">
+    <div class="absolute -right-8 -bottom-8 opacity-10 text-9xl text-white">
+      <i class="fa-solid fa-utensils"></i>
+    </div>
+    
+    <div class="flex items-center space-x-3 relative z-10">
+      <div class="w-14 h-14 rounded-2xl bg-white flex items-center justify-center overflow-hidden shrink-0 border border-slate-600 shadow">
+        <img v-if="store.logo_url" :src="store.logo_url" alt="Logo" class="w-full h-full object-cover">
+        <span v-else class="text-orange-500 font-extrabold text-2xl">{{ (store.name || 'R').charAt(0) }}</span>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center justify-between">
+          <h1 class="font-bold text-base text-white truncate mr-2">{{ store.name || 'ร้านอาหารเดลิเวอรี่' }}</h1>
+          <button @click="isMyOrdersModalOpen = true" class="relative bg-white/10 hover:bg-white/20 active:scale-95 text-white px-2.5 py-1 rounded-xl text-[11px] font-medium flex items-center space-x-1 transition border border-white/20 shrink-0">
+            <i class="fa-solid fa-clock-rotate-left text-[10px]"></i>
+            <span>ออเดอร์ของฉัน</span>
+            <span v-if="activeOrder" class="w-2 h-2 bg-emerald-400 rounded-full animate-ping ml-1"></span>
+          </button>
+        </div>
+        <p class="text-xs text-slate-300 truncate">{{ store.branch_name || 'สาขาหลัก' }}</p>
+        <div class="flex items-center space-x-2 mt-1">
+          <span :class="store.is_store_delivery_open ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-rose-500/20 text-rose-300 border-rose-500/40'" class="px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center">
+            <span class="w-1.5 h-1.5 rounded-full mr-1.5" :class="store.is_store_delivery_open ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'"></span>
+            {{ store.is_store_delivery_open ? 'เปิดรับออเดอร์เดลิเวอรี่' : 'ปิดรับออเดอร์ชั่วคราว' }}
+          </span>
+          <span v-if="store.phone" class="text-[11px] text-slate-400 font-mono"><i class="fa-solid fa-phone mr-1"></i>{{ store.phone }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Order Banner: Click to return to track.html immediately -->
+    <div v-if="activeOrder" class="mt-3 p-3 bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white rounded-2xl shadow-lg flex items-center justify-between animate-fadeIn">
+      <div class="flex items-center space-x-2.5 min-w-0">
+        <div class="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-base shrink-0 animate-bounce">
+          <i class="fa-solid fa-motorcycle"></i>
+        </div>
+        <div class="min-w-0">
+          <div class="text-xs font-bold truncate">คุณมีออเดอร์ #{{ activeOrder.id }}</div>
+          <div class="text-[10px] text-amber-100 flex items-center space-x-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+            <span>สถานะ: {{ getStatusLabel(activeOrder.delivery_status) }}</span>
+          </div>
+        </div>
+      </div>
+      <a :href="'track.html?orderId=' + activeOrder.id" class="bg-white text-orange-600 font-bold px-3 py-1.5 rounded-xl text-xs shadow hover:bg-orange-50 shrink-0 ml-2 flex items-center space-x-1">
+        <span>ติดตามสด</span>
+        <i class="fa-solid fa-chevron-right text-[10px]"></i>
+      </a>
+    </div>
+
+    <!-- Closed Store Alert Banner -->
+    <div v-if="!store.is_store_delivery_open" class="mt-3 p-2.5 bg-rose-950/80 border border-rose-600/50 rounded-xl text-xs text-rose-200 flex items-center">
+      <i class="fa-solid fa-triangle-exclamation mr-2 text-rose-400 text-sm"></i>
+      <span>ขณะนี้ร้านปิดรับออเดอร์เดลิเวอรี่ชั่วคราว สามารถเลือกดูเมนูล่วงหน้าได้ค่ะ</span>
+    </div>
+  </header>
+
+  <!-- ========================================================
+       2. CATEGORY HORIZONTAL SCROLL & SEARCH
+  ======================================================== -->
+  <div class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200 px-3 py-2 space-y-2">
+    <!-- Search Bar -->
+    <div class="relative">
+      <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+      <input v-model="searchQuery" type="text" placeholder="ค้นหาเมนูอาหาร..." class="w-full pl-8 pr-8 py-1.5 bg-slate-100 rounded-xl text-xs focus:bg-white focus:ring-1 focus:ring-brand-active focus:outline-none transition">
+      <button v-if="searchQuery" @click="searchQuery = ''" class="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs">
+        <i class="fa-solid fa-circle-xmark"></i>
+      </button>
+    </div>
+
+    <!-- Category Pills -->
+    <div class="flex items-center space-x-1.5 overflow-x-auto scrollbar-hide pb-0.5 text-xs">
+      <button @click="selectedCategory = 'all'" 
+        :class="selectedCategory === 'all' ? 'bg-brand-dark text-white font-bold shadow' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+        class="px-3 py-1.5 rounded-xl whitespace-nowrap transition shrink-0">
+        ทั้งหมด ({{ availableMenuItems.length }})
+      </button>
+      <button v-for="cat in categories" :key="cat.id" @click="selectedCategory = cat.id"
+        :class="selectedCategory === cat.id ? 'bg-brand-dark text-white font-bold shadow' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+        class="px-3 py-1.5 rounded-xl whitespace-nowrap transition shrink-0">
+        {{ cat.name }}
+      </button>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       3. MENU LIST
+  ======================================================== -->
+  <main class="flex-1 p-3 space-y-3">
+    <div v-if="filteredMenuItems.length === 0" class="text-center py-20 text-slate-400 space-y-2">
+      <div class="w-16 h-16 mx-auto rounded-full bg-slate-100 flex items-center justify-center text-slate-300 text-2xl">
+        <i class="fa-solid fa-bowl-food"></i>
+      </div>
+      <div class="font-bold text-slate-600 text-sm">ยังไม่มีรายการอาหารในขณะนี้</div>
+      <p class="text-xs text-slate-400 max-w-xs mx-auto">ทางร้านยังไม่ได้ลงรายการอาหาร หรือรายการอาหารหมดชั่วคราว กรุณาติดต่อทางร้านโดยตรงค่ะ</p>
+    </div>
+
+    <div v-else class="space-y-2.5">
+      <div v-for="item in filteredMenuItems" :key="item.id" 
+        @click="handleMenuItemClick(item)"
+        class="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-sm flex space-x-3 items-center cursor-pointer hover:border-brand-active/40 active:scale-[0.99] transition">
+        
+        <!-- Food Image or Color -->
+        <div class="w-20 h-20 rounded-xl overflow-hidden shrink-0 relative border border-slate-100">
+          <img v-if="item.image_url" :src="item.image_url" :alt="item.name" class="w-full h-full object-cover">
+          <div v-else :style="{ backgroundColor: item.bg_color || '#F97316' }" class="w-full h-full flex flex-col items-center justify-center text-white p-1.5 text-center shadow-inner">
+            <i class="fa-solid fa-utensils text-xl opacity-80 mb-0.5"></i>
+            <span class="text-[9px] font-bold line-clamp-1 drop-shadow-sm leading-tight">{{ (item.name || '').substring(0, 10) }}</span>
+          </div>
+          <!-- Out of stock badge -->
+          <div v-if="item.is_available === false" class="absolute inset-0 bg-slate-900/60 flex items-center justify-center text-white text-[10px] font-bold">
+            หมดชั่วคราว
+          </div>
+        </div>
+
+        <!-- Food Details -->
+        <div class="flex-1 min-w-0">
+          <h3 class="font-bold text-xs text-slate-800 leading-snug line-clamp-2">{{ item.name }}</h3>
+          <p class="text-[11px] text-slate-400 line-clamp-1 mt-0.5">{{ item.description || '' }}</p>
+          
+          <div class="flex items-center justify-between mt-2">
+            <span class="font-bold text-brand-active text-sm font-mono">฿{{ (item.delivery_price || item.price).toLocaleString() }}</span>
+            <button :disabled="!store.is_store_delivery_open || item.is_available === false" 
+              class="bg-brand-active hover:bg-sky-800 disabled:bg-slate-200 text-white font-bold px-3 py-1 rounded-xl text-xs shadow-sm flex items-center space-x-1">
+              <i class="fa-solid fa-plus text-[10px]"></i>
+              <span>สั่ง</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ========================================================
+       4. MODIFIERS POPUP MODAL (ตัวเลือก & ท็อปปิ้ง)
+  ======================================================== -->
+  <div v-if="isModifierModalOpen && activeItem" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl animate-fadeIn">
+      
+      <!-- Modal Header -->
+      <div class="p-4 border-b border-slate-100 flex justify-between items-start">
+        <div>
+          <h3 class="font-bold text-sm text-slate-800">{{ activeItem.name }}</h3>
+          <p class="text-xs text-brand-active font-bold font-mono mt-0.5">฿{{ (activeItem.delivery_price || activeItem.price).toLocaleString() }}</p>
+        </div>
+        <button @click="isModifierModalOpen = false" class="p-1 text-slate-400 hover:text-slate-600 text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Option Groups Scrollable -->
+      <div class="p-4 overflow-y-auto space-y-4 text-xs flex-1">
+        <div v-for="group in activeItemOptionGroups" :key="group.id" class="space-y-2">
+          <div class="flex justify-between items-baseline">
+            <span class="font-bold text-slate-700 text-xs">{{ group.name }}</span>
+            <span class="text-[10px] text-slate-400">
+              {{ group.is_multiple_choice ? '(เลือกได้หลายอย่าง)' : '(เลือกได้ 1 อย่าง)' }}
+            </span>
+          </div>
+
+          <!-- Options List -->
+          <div class="grid grid-cols-1 gap-1.5">
+            <label v-for="opt in group.options" :key="opt.id" 
+              :class="isOptionSelected(group, opt) ? 'bg-sky-50 border-brand-active text-brand-active font-semibold' : 'bg-slate-50 border-slate-200 text-slate-700'"
+              class="p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition">
+              <div class="flex items-center space-x-2">
+                <input v-if="!group.is_multiple_choice" type="radio" :name="group.id" :value="opt.id" 
+                  :checked="isOptionSelected(group, opt)" @change="selectSingleOption(group, opt)" class="text-brand-active focus:ring-brand-active">
+                <input v-else type="checkbox" :value="opt.id" 
+                  :checked="isOptionSelected(group, opt)" @change="toggleMultiOption(group, opt)" class="rounded text-brand-active focus:ring-brand-active">
+                <span>{{ opt.name }}</span>
+              </div>
+              <span class="text-xs font-mono font-bold" :class="opt.extra_price > 0 ? 'text-orange-500' : 'text-slate-400'">
+                {{ opt.extra_price > 0 ? '+฿' + opt.extra_price : 'ฟรี' }}
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Special Notes -->
+        <div class="space-y-1">
+          <label class="font-bold text-slate-700 block text-xs">ข้อความถึงร้านค้า (ถ้ามี):</label>
+          <input v-model="modalNote" type="text" placeholder="เช่น ไม่ใส่ผักชี, แยกน้ำซุป..." class="w-full p-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-active">
+        </div>
+
+        <!-- Quantity Selector -->
+        <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+          <span class="font-bold text-slate-700">จำนวน:</span>
+          <div class="flex items-center space-x-3">
+            <button @click="modalQty = Math.max(1, modalQty - 1)" class="w-8 h-8 rounded-full border border-slate-300 flex items-center justify-center text-slate-600 hover:bg-slate-100">
+              <i class="fa-solid fa-minus text-xs"></i>
+            </button>
+            <span class="font-bold font-mono text-sm w-6 text-center">{{ modalQty }}</span>
+            <button @click="modalQty++" class="w-8 h-8 rounded-full bg-brand-active text-white flex items-center justify-center hover:bg-sky-800">
+              <i class="fa-solid fa-plus text-xs"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer Button -->
+      <div class="p-4 bg-slate-50 border-t border-slate-200">
+        <button @click="confirmAddToCart" class="w-full bg-brand-active hover:bg-sky-800 text-white font-bold py-3 rounded-xl text-xs shadow-md flex items-center justify-between px-4 transition">
+          <span>เพิ่มลงตะกร้า</span>
+          <span class="font-mono text-sm">฿{{ modalItemTotalPrice.toLocaleString() }}</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       5. FLOATING CART BOTTOM BAR
+  ======================================================== -->
+  <div v-if="cartTotalItems > 0 && !isCheckoutOpen" class="fixed bottom-3 left-0 right-0 max-w-md mx-auto px-4 z-40">
+    <button @click="openCheckout" class="w-full bg-brand-active hover:bg-sky-800 text-white font-bold py-3 px-4 rounded-2xl shadow-xl flex items-center justify-between transition transform active:scale-[0.98]">
+      <div class="flex items-center space-x-2">
+        <div class="w-7 h-7 rounded-full bg-white text-brand-active font-bold text-xs flex items-center justify-center font-mono shadow-sm">
+          {{ cartTotalItems }}
+        </div>
+        <span class="text-xs tracking-wide">ดูตะกร้าสั่งอาหาร</span>
+      </div>
+      <div class="flex items-center space-x-1.5">
+        <span class="font-mono text-base font-bold">฿{{ cartSubtotal.toLocaleString() }}</span>
+        <i class="fa-solid fa-chevron-right text-xs ml-1"></i>
+      </div>
+    </button>
+  </div>
+
+  <!-- ========================================================
+       6. CHECKOUT FULL DRAWER
+  ======================================================== -->
+  <div v-if="isCheckoutOpen" class="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex flex-col justify-end max-w-md mx-auto">
+    <div class="bg-white rounded-t-3xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl animate-fadeIn">
+      
+      <!-- Drawer Header -->
+      <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+        <div class="flex items-center space-x-2">
+          <i class="fa-solid fa-basket-shopping text-brand-active text-lg"></i>
+          <h2 class="font-bold text-sm text-slate-800">ยืนยันรายการสั่งอาหารเดลิเวอรี่</h2>
+        </div>
+        <button @click="isCheckoutOpen = false" class="p-1 text-slate-400 hover:text-slate-600 text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Drawer Body Scrollable -->
+      <div class="p-4 overflow-y-auto space-y-4 text-xs flex-1">
+        
+        <!-- Cart Items List -->
+        <div class="space-y-2">
+          <div class="font-bold text-slate-700 flex justify-between">
+            <span>รายการอาหารในตะกร้า ({{ cartTotalItems }})</span>
+            <button @click="clearCart" class="text-rose-500 font-normal hover:underline text-[11px]">ล้างตะกร้า</button>
+          </div>
+
+          <div class="divide-y divide-slate-100 border border-slate-200 rounded-2xl p-2 bg-slate-50/60 space-y-2">
+            <div v-for="(item, idx) in cart" :key="idx" class="pt-2 first:pt-0 flex justify-between items-start gap-2">
+              <div class="flex-1 min-w-0">
+                <div class="font-bold text-slate-800 text-xs">{{ item.name }}</div>
+                <div v-if="item.selectedOptionsText" class="text-[10px] text-slate-500 mt-0.5">
+                  {{ item.selectedOptionsText }}
+                </div>
+                <div v-if="item.note" class="text-[10px] text-orange-600 italic">
+                  โน้ต: {{ item.note }}
+                </div>
+                <div class="text-brand-active font-mono font-bold mt-1">฿{{ item.unitPrice.toLocaleString() }}</div>
+              </div>
+
+              <!-- Item Qty Modifier -->
+              <div class="flex items-center space-x-2 shrink-0">
+                <button @click="updateCartQty(idx, -1)" class="w-6 h-6 rounded-lg bg-white border border-slate-300 flex items-center justify-center text-slate-600">
+                  <i class="fa-solid fa-minus text-[9px]"></i>
+                </button>
+                <span class="font-bold font-mono text-xs w-4 text-center">{{ item.quantity }}</span>
+                <button @click="updateCartQty(idx, 1)" class="w-6 h-6 rounded-lg bg-brand-active text-white flex items-center justify-center">
+                  <i class="fa-solid fa-plus text-[9px]"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Customer Details Form -->
+        <div class="space-y-3 pt-2 border-t border-slate-100">
+          <h3 class="font-bold text-slate-800 flex items-center text-xs">
+            <i class="fa-solid fa-location-dot text-rose-500 mr-1.5"></i> ข้อมูลผู้รับและที่อยู่จัดส่ง
+          </h3>
+
+          <div class="space-y-2.5">
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">ชื่อผู้รับ:</label>
+                <input v-model="customerForm.name" type="text" placeholder="ระบุชื่อของคุณ" class="w-full p-2.5 border border-slate-300 rounded-xl text-xs bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-active">
+              </div>
+
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">เบอร์โทรศัพท์:</label>
+                <input v-model="customerForm.phone" type="tel" placeholder="08x-xxx-xxxx" class="w-full p-2.5 border border-slate-300 rounded-xl text-xs bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-active font-mono">
+              </div>
+            </div>
+
+            <!-- MAP PINNING SELECTOR BUTTON / CARD -->
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">จุดปักหมุดจัดส่งบนแผนที่:</label>
+              <div @click="openMapPicker" 
+                class="p-3 rounded-2xl border-2 cursor-pointer transition flex items-center justify-between"
+                :class="isCustomerOutOfRange ? 'bg-rose-50/80 border-rose-400 hover:bg-rose-100/60 shadow-sm' : (customerForm.isPinned ? 'bg-emerald-50/80 border-emerald-400 hover:bg-emerald-100/60 shadow-sm' : 'bg-sky-50/80 border-dashed border-sky-400 hover:bg-sky-100/60')">
+                <div class="flex items-center space-x-3">
+                  <div class="w-10 h-10 rounded-xl flex items-center justify-center text-white text-base shadow-sm shrink-0"
+                    :class="isCustomerOutOfRange ? 'bg-rose-500' : (customerForm.isPinned ? 'bg-emerald-500' : 'bg-sky-600')">
+                    <i class="fa-solid" :class="isCustomerOutOfRange ? 'fa-triangle-exclamation' : (customerForm.isPinned ? 'fa-location-dot' : 'fa-map-pin')"></i>
+                  </div>
+                  <div class="min-w-0">
+                    <div class="font-bold text-xs truncate" :class="isCustomerOutOfRange ? 'text-rose-900' : (customerForm.isPinned ? 'text-emerald-900' : 'text-sky-900')">
+                      {{ isCustomerOutOfRange ? 'อยู่นอกพื้นที่จัดส่ง' : (customerForm.isPinned ? 'ปักหมุดตำแหน่งจัดส่งแล้ว' : 'กดเลือกจุดปักหมุดจากแผนที่') }}
+                    </div>
+                    <div class="text-[10px] truncate" :class="isCustomerOutOfRange ? 'text-rose-700 font-semibold' : (customerForm.isPinned ? 'text-emerald-700' : 'text-sky-700')">
+                      {{ isCustomerOutOfRange ? 'ระยะทาง ' + customerForm.distanceKm + ' กม. เกินรัศมีร้าน (' + (store.max_delivery_km || 15) + ' กม.)' : (customerForm.isPinned ? 'ระยะทาง: ' + customerForm.distanceKm + ' กม. (ค่าส่ง ฿' + calculatedDeliveryFee + ')' : 'แตะเพื่อเปิดแผนที่และเลือกจุดส่ง') }}
+                    </div>
+                  </div>
+                </div>
+                <div class="text-xs font-bold flex items-center shrink-0 ml-2" :class="isCustomerOutOfRange ? 'text-rose-600' : (customerForm.isPinned ? 'text-emerald-600' : 'text-sky-600')">
+                  <span>{{ customerForm.isPinned ? 'เปลี่ยนจุด' : 'เลือกจุด' }}</span>
+                  <i class="fa-solid fa-chevron-right text-[10px] ml-1"></i>
+                </div>
+              </div>
+            </div>
+
+            <!-- ADDITIONAL NOTES FIELD (โน้ตเพิ่มเติมถึงไรเดอร์) -->
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">
+                รายละเอียดที่อยู่เพิ่มเติม / โน้ตถึงไรเดอร์:
+              </label>
+              <textarea v-model="customerForm.note" rows="2" 
+                placeholder="ระบุบ้านเลขที่, ซอย, ตึก/คอนโด, ชั้น/ห้อง, หรือจุดสังเกต (เช่น ฝากไว้ที่ป้อม รปภ., แขวนไว้หน้ารั้ว)"
+                class="w-full p-2.5 border border-slate-300 rounded-xl text-xs bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-active"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Payment Method -->
+        <div class="space-y-2 pt-2 border-t border-slate-100">
+          <h3 class="font-bold text-slate-800 text-xs flex items-center">
+            <i class="fa-solid fa-credit-card text-brand-active mr-1.5"></i> วิธีการชำระเงิน
+          </h3>
+
+          <div class="grid grid-cols-2 gap-2">
+            <label :class="paymentMethod === 'promptpay' ? 'bg-sky-50 border-brand-active text-brand-active font-bold shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-600'"
+              class="p-3 rounded-2xl border flex flex-col items-center justify-center text-center cursor-pointer transition">
+              <input type="radio" v-model="paymentMethod" value="promptpay" class="sr-only">
+              <i class="fa-solid fa-qrcode text-lg mb-1 text-sky-600"></i>
+              <span class="text-xs">QR พร้อมเพย์</span>
+              <span class="text-[9px] text-slate-400">สแกนจ่ายทันที</span>
+            </label>
+
+            <label :class="paymentMethod === 'cod' ? 'bg-sky-50 border-brand-active text-brand-active font-bold shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-600'"
+              class="p-3 rounded-2xl border flex flex-col items-center justify-center text-center cursor-pointer transition">
+              <input type="radio" v-model="paymentMethod" value="cod" class="sr-only">
+              <i class="fa-solid fa-money-bill-wave text-lg mb-1 text-emerald-600"></i>
+              <span class="text-xs">เก็บเงินปลายทาง</span>
+              <span class="text-[9px] text-slate-400">จ่ายเงินสดกับไรเดอร์</span>
+            </label>
+          </div>
+
+          <!-- PromptPay QR Preview if selected -->
+          <div v-if="paymentMethod === 'promptpay'" class="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-center space-y-2">
+            <div v-if="store.promptpay_number" class="space-y-2">
+              <div class="font-bold text-slate-700 text-xs">สแกน QR พร้อมเพย์เพื่อชำระเงิน</div>
+              <div class="w-36 h-36 mx-auto bg-white p-2 rounded-xl border border-slate-300 shadow-sm flex items-center justify-center">
+                <img :src="'https://promptpay.io/' + store.promptpay_number + '/' + finalTotalAmount + '.png'" alt="PromptPay QR" class="w-full h-full object-contain">
+              </div>
+              <div class="text-[11px] text-slate-500">
+                พร้อมเพย์: <span class="font-mono font-bold text-slate-700">{{ store.promptpay_number }}</span>
+                <div v-if="store.promptpay_name" class="text-[10px] text-slate-500 font-medium">ชื่อบัญชี: {{ store.promptpay_name }}</div>
+                <div class="text-[10px] text-slate-400">ยอดชำระ ฿{{ finalTotalAmount.toLocaleString() }} (แคปภาพสแกนจ่ายได้)</div>
+              </div>
+            </div>
+            <div v-else class="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200">
+              <i class="fa-solid fa-circle-exclamation mr-1"></i> ทางร้านยังไม่ได้ตั้งค่าหมายเลขพร้อมเพย์ กรุณาเลือกวิธีชำระแบบเก็บเงินปลายทาง
+            </div>
+          </div>
+        </div>
+
+        <!-- Order Summary Breakdown -->
+        <div class="p-3 bg-slate-100 rounded-2xl space-y-1.5 text-xs text-slate-600">
+          <div class="flex justify-between">
+            <span>ค่าอาหารรวม:</span>
+            <span class="font-mono">฿{{ cartSubtotal.toLocaleString() }}</span>
+          </div>
+          <div class="flex justify-between" :class="{ 'text-rose-600 font-bold': isCustomerOutOfRange }">
+            <span>ค่าจัดส่ง ({{ customerForm.distanceKm }} กม.):</span>
+            <span v-if="isCustomerOutOfRange" class="font-bold text-rose-600 text-xs">อยู่นอกพื้นที่จัดส่ง</span>
+            <span v-else class="font-mono">฿{{ calculatedDeliveryFee.toLocaleString() }}</span>
+          </div>
+          <div class="flex justify-between font-bold text-slate-900 pt-1.5 border-t border-slate-200 text-sm">
+            <span>ยอดชำระสุทธิ:</span>
+            <span v-if="isCustomerOutOfRange" class="font-mono text-rose-600 text-sm">ไม่สามารถจัดส่งได้</span>
+            <span v-else class="font-mono text-brand-active text-base">฿{{ finalTotalAmount.toLocaleString() }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Drawer Footer Submit Button -->
+      <div class="p-4 bg-white border-t border-slate-200">
+        <button @click="submitOrder" :disabled="isSubmitting || isCustomerOutOfRange" 
+          class="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-2xl text-sm shadow-lg flex items-center justify-center space-x-2 transition transform active:scale-[0.99]">
+          <i :class="isCustomerOutOfRange ? 'fa-solid fa-ban' : 'fa-solid fa-paper-plane'" :class="{ 'animate-pulse': isSubmitting }"></i>
+          <span v-if="isCustomerOutOfRange">อยู่นอกรัศมีจัดส่ง (เกิน {{ store.max_delivery_km || 15 }} กม.)</span>
+          <span v-else>{{ isSubmitting ? 'กำลังส่งออเดอร์...' : 'ยืนยันการสั่งซื้อ (฿' + finalTotalAmount.toLocaleString() + ')' }}</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       7. MAP PINNING MODAL (FULL INTERACTIVE LEAFLET MAP)
+  ======================================================== -->
+  <div v-if="isMapPickerOpen" class="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex flex-col justify-end max-w-md mx-auto">
+    <div class="bg-white rounded-t-3xl h-[88vh] flex flex-col overflow-hidden shadow-2xl animate-fadeIn relative">
+      
+      <!-- Map Modal Header -->
+      <div class="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 shrink-0">
+        <div class="flex items-center space-x-2">
+          <div class="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center text-sm shadow-sm">
+            <i class="fa-solid fa-map-location-dot"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-sm text-slate-800">เลื่อนแผนที่เพื่อปักหมุดส่งอาหาร</h3>
+            <p class="text-[10px] text-slate-500">เลื่อนแผนที่ให้เป้าหมุดตรงกับบ้านหรืออาคารของคุณ</p>
+          </div>
+        </div>
+        <button @click="isMapPickerOpen = false" class="p-1 text-slate-400 hover:text-slate-600 text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Map Container with Center Pin -->
+      <div class="flex-1 relative overflow-hidden bg-slate-200">
+        <div id="pickerMap" class="w-full h-full"></div>
+
+        <!-- Fixed Center Pin (Like Grab / LINE MAN) -->
+        <div class="center-pin-container">
+          <div class="relative flex flex-col items-center">
+            <div class="w-11 h-11 bg-rose-600 text-white rounded-full flex items-center justify-center shadow-2xl border-2 border-white text-lg pin-bounce">
+              <i class="fa-solid fa-location-dot"></i>
+            </div>
+            <div class="w-3 h-1 bg-black/40 rounded-full mt-0.5 blur-[1px]"></div>
+          </div>
+        </div>
+
+        <!-- Floating Button: GPS Current Location -->
+        <button @click="locatePickerToGPS" :disabled="isLocating" 
+          class="absolute bottom-4 right-4 z-[450] bg-white text-brand-active hover:bg-slate-50 font-bold px-3 py-2 rounded-xl shadow-xl border border-slate-200 flex items-center space-x-1.5 text-xs transition active:scale-95">
+          <i class="fa-solid fa-crosshairs text-sm text-rose-500" :class="{ 'animate-spin': isLocating }"></i>
+          <span>{{ isLocating ? 'กำลังหาพิกัด...' : 'ตำแหน่งของฉัน' }}</span>
+        </button>
+
+        <!-- Distance & Delivery Fee Live Overlay -->
+        <div class="absolute top-3 left-3 right-3 z-[450] bg-white/95 backdrop-blur p-2.5 rounded-xl border border-slate-200 shadow-md text-xs flex items-center justify-between"
+          :class="{ 'border-rose-300 ring-2 ring-rose-200': isPickerOutOfRange }">
+          <div class="flex items-center space-x-2">
+            <i class="fa-solid fa-route text-base" :class="isPickerOutOfRange ? 'text-rose-500' : 'text-sky-600'"></i>
+            <div>
+              <div class="font-bold text-slate-800 flex items-center space-x-1.5 flex-wrap">
+                <span>ระยะทาง: {{ pickerDistanceKm }} กม.</span>
+                <span class="text-[9px] px-1.5 py-0.5 rounded font-semibold bg-sky-100 text-sky-800 flex items-center">
+                  <i v-if="isRoutingLoading" class="fa-solid fa-circle-notch animate-spin mr-1 text-[8px] text-sky-600"></i>
+                  <i v-else class="fa-solid fa-road mr-1 text-[8px] text-sky-600"></i>
+                  {{ routeModeBadgeText }}
+                </span>
+              </div>
+              <div v-if="isPickerOutOfRange" class="text-[11px] text-rose-600 font-bold flex items-center">
+                <i class="fa-solid fa-triangle-exclamation mr-1"></i> เกินระยะส่งสูงสุด (ไม่เกิน {{ store.max_delivery_km || 15 }} กม.)
+              </div>
+              <div v-else class="text-[10px] text-slate-400 font-mono">{{ pickerCoordsText }}</div>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-[10px] text-slate-500">ค่าจัดส่ง</div>
+            <div v-if="isPickerOutOfRange" class="font-bold text-rose-600 text-xs">อยู่นอกพื้นที่</div>
+            <div v-else class="font-bold text-emerald-600 font-mono text-sm">฿{{ pickerDeliveryFee }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Map Modal Footer Confirm Button -->
+      <div class="p-4 bg-white border-t border-slate-200 shrink-0">
+        <button @click="confirmPinLocation" :disabled="isPickerOutOfRange" 
+          :class="isPickerOutOfRange ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none' : 'bg-brand-active hover:bg-sky-800 text-white shadow-lg active:scale-[0.99] cursor-pointer'"
+          class="w-full font-bold py-3.5 rounded-2xl text-xs flex items-center justify-center space-x-2 transition transform">
+          <i :class="isPickerOutOfRange ? 'fa-solid fa-ban' : 'fa-solid fa-check'"></i>
+          <span v-if="isPickerOutOfRange">อยู่นอกพื้นที่จัดส่ง (เกิน {{ store.max_delivery_km || 15 }} กม.)</span>
+          <span v-else>ยืนยันตำแหน่งนี้ (ค่าส่ง ฿{{ pickerDeliveryFee }})</span>
+        </button>
+      </div>
+    </div>
+  </div>
+  <!-- ========================================================
+       8. MY ORDERS & TRACKING MODAL (ออเดอร์ของฉัน)
+  ======================================================== -->
+  <div v-if="isMyOrdersModalOpen" class="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl animate-fadeIn">
+      
+      <!-- Modal Header -->
+      <div class="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 shrink-0">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-8 h-8 rounded-xl bg-brand-dark text-white flex items-center justify-center text-sm shadow-sm">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-sm text-slate-800">ออเดอร์ของฉัน / ติดตามสถานะ</h3>
+            <p class="text-[10px] text-slate-500">ดูรายการที่สั่งไว้หรือติดตามอาหารแบบสดๆ</p>
+          </div>
+        </div>
+        <button @click="isMyOrdersModalOpen = false" class="p-1.5 text-slate-400 hover:text-slate-600 text-base">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-4 overflow-y-auto space-y-3 flex-1">
+        
+        <!-- Phone Search Lookup (กรณีเปลี่ยนเครื่องหรือล้างประวัติ) -->
+        <div class="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+          <label class="text-[11px] font-bold text-slate-700 flex items-center">
+            <i class="fa-solid fa-magnifying-glass mr-1.5 text-brand-active"></i> ค้นหาออเดอร์ด้วยเบอร์โทรศัพท์
+          </label>
+          <div class="flex space-x-2">
+            <input v-model="orderSearchPhone" type="tel" placeholder="กรอกเบอร์โทรที่ใช้สั่งอาหาร..." class="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-1 focus:ring-brand-active">
+            <button @click="searchOrdersByPhone" class="bg-brand-active hover:bg-sky-800 text-white px-3 py-2 rounded-xl text-xs font-bold transition">
+              ค้นหา
+            </button>
+          </div>
+        </div>
+
+        <!-- Orders List -->
+        <div v-if="displayedCustomerOrders.length > 0" class="space-y-2.5">
+          <div class="text-[11px] font-bold text-slate-500 flex items-center justify-between">
+            <span>รายการออเดอร์ ({{ displayedCustomerOrders.length }})</span>
+            <span v-if="orderSearchPhone" class="text-[10px] text-sky-600 cursor-pointer" @click="orderSearchPhone = ''; searchedOrders = []">ล้างการค้นหา</span>
+          </div>
+          
+          <div v-for="ord in displayedCustomerOrders" :key="ord.id" class="p-3.5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-2.5 hover:border-slate-300 transition">
+            <div class="flex justify-between items-start">
+              <div>
+                <div class="flex items-center space-x-1.5">
+                  <span class="font-mono font-bold text-xs text-slate-800">#{{ ord.id }}</span>
+                </div>
+                <div class="text-[10px] text-slate-400 font-mono">{{ formatOrderDate(ord.created_at) }}</div>
+              </div>
+              <span class="px-2.5 py-1 rounded-full text-[10px] font-bold"
+                :class="{
+                  'bg-rose-100 text-rose-700': ord.delivery_status === 'new',
+                  'bg-amber-100 text-amber-700': ord.delivery_status === 'cooking' || ord.delivery_status === 'preparing',
+                  'bg-sky-100 text-sky-700 animate-pulse': ord.delivery_status === 'delivering',
+                  'bg-emerald-100 text-emerald-700': ord.delivery_status === 'completed'
+                }">
+                <i class="fa-solid fa-circle text-[5px] mr-1" :class="{
+                  'text-rose-500': ord.delivery_status === 'new',
+                  'text-amber-500': ord.delivery_status === 'cooking' || ord.delivery_status === 'preparing',
+                  'text-sky-500': ord.delivery_status === 'delivering',
+                  'text-emerald-500': ord.delivery_status === 'completed'
+                }"></i>
+                {{ getStatusLabel(ord.delivery_status) }}
+              </span>
+            </div>
+
+            <!-- Items Summary -->
+            <div class="text-xs text-slate-600 bg-slate-50 p-2 rounded-xl space-y-1">
+              <div v-for="(it, idx) in (ord.items || []).slice(0, 2)" :key="idx" class="truncate text-[11px] flex justify-between">
+                <span>• {{ it.name }}</span>
+                <span class="text-slate-400 shrink-0 ml-2">x{{ it.quantity }}</span>
+              </div>
+              <div v-if="(ord.items || []).length > 2" class="text-[10px] text-slate-400 italic">
+                + มีรายการอื่นอีก {{ ord.items.length - 2 }} รายการ
+              </div>
+            </div>
+
+            <!-- Total Price & Action Button -->
+            <div class="flex justify-between items-center pt-1">
+              <div>
+                <span class="text-[10px] text-slate-400">ยอดรวม: </span>
+                <span class="font-bold text-slate-800 font-mono text-sm">฿{{ ord.net_amount }}</span>
+              </div>
+              <a :href="'track.html?orderId=' + ord.id" class="bg-brand-active hover:bg-sky-800 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center space-x-1.5 shadow-sm transition">
+                <i class="fa-solid fa-location-crosshairs text-[10px]"></i>
+                <span>ติดตามสถานะ</span>
+                <i class="fa-solid fa-chevron-right text-[9px]"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <div v-else class="py-10 text-center text-slate-400 space-y-2">
+          <div class="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto text-slate-400 text-xl">
+            <i class="fa-solid fa-receipt"></i>
+          </div>
+          <p class="text-xs font-medium text-slate-600">ยังไม่พบประวัติการสั่งซื้อ</p>
+          <p class="text-[10px] text-slate-400">หากคุณสั่งไว้แล้ว สามารถค้นหาด้วยเบอร์โทรศัพท์ด้านบนได้ค่ะ</p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ========================================================
+     VUE 3 APPLICATION LOGIC
+======================================================== -->
+<script>
+  const { createApp, ref, computed, onMounted } = Vue;
+
+  createApp({
+    setup() {
+      const safeGetJSON = (key, fallback) => {
+        try {
+          const item = localStorage.getItem(key);
+          return item ? JSON.parse(item) : fallback;
+        } catch (e) {
+          return fallback;
+        }
+      };
+
+      // FACTORY CLEAN CHECK: Auto-purge legacy demo data on fresh start
+      try {
+        const legacyStore = localStorage.getItem('wpos_store');
+        if (legacyStore && (legacyStore.includes('02-123-4567') || legacyStore.includes('0105559123456') || legacyStore.includes('สุขุมวิท') || legacyStore.includes('วงใน ฟู้ดสตอรี่'))) {
+          localStorage.removeItem('wpos_store');
+          localStorage.removeItem('wpos_modifier_groups');
+          localStorage.removeItem('wpos_categories');
+          localStorage.removeItem('wpos_option_groups');
+          localStorage.removeItem('wpos_delivery_orders');
+        }
+      } catch (e) {}
+
+      // 1. Store Profile Data
+      const defaultStore = {
+        name: '',
+        branch_name: 'สาขาหลัก',
+        logo_url: '',
+        phone: '',
+        promptpay_number: '',
+        promptpay_name: '',
+        address: '',
+        tax_id: '',
+        is_store_delivery_open: true,
+        base_delivery_km: 2.0,
+        base_delivery_fee: 20.0,
+        extra_delivery_fee_per_km: 10.0,
+        max_delivery_km: 15.0,
+        distance_calc_mode: 'road_routing',
+        detour_multiplier: 1.3,
+        store_lat: 13.7563,
+        store_lng: 100.5018
+      };
+      const store = ref(safeGetJSON('wpos_store', defaultStore));
+      if (store.value.base_delivery_km === undefined) store.value.base_delivery_km = 2.0;
+      if (store.value.base_delivery_fee === undefined) store.value.base_delivery_fee = 20.0;
+      if (store.value.extra_delivery_fee_per_km === undefined) store.value.extra_delivery_fee_per_km = 10.0;
+      if (store.value.max_delivery_km === undefined) store.value.max_delivery_km = 15.0;
+      if (store.value.distance_calc_mode === undefined) store.value.distance_calc_mode = 'road_routing';
+      if (store.value.detour_multiplier === undefined) store.value.detour_multiplier = 1.3;
+      if (store.value.store_lat === undefined) store.value.store_lat = 13.7563;
+      if (store.value.store_lng === undefined) store.value.store_lng = 100.5018;
+
+      // 2. Menu Items & Categories
+      const categories = ref(safeGetJSON('wpos_categories', []));
+
+      const demoItemNames = [
+        'ผัดกะเพราเนื้อโคขุนพรีเมียม ไข่ดาวกรอบ',
+        'ก๋วยเตี๋ยวต้มยำสุโขทัยโบราณ ไข่ยางมะตูม',
+        'ก๋วยเตี๋ยวไก่ฉีกโบราณ',
+        'ข้าวผัดปูก้อนคั่วกระทะหอม',
+        'ชาไทยเย็นพรีเมียม สูตรเข้มข้น',
+        'ต้มยำกุ้งแม่น้ำน้ำข้นหม้อไฟ',
+        'ข้าวผัดปูเนื้อก้อนจัมโบ้',
+        'หมูกรอบคั่วพริกเกลือกระเทียมสด',
+        'เกี๊ยวกรอบทอด กรุบกรอบ'
+      ];
+      const demoItemIds = new Set(['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9']);
+      let loadedMenuItems = safeGetJSON('wpos_menu_items', []);
+      if (Array.isArray(loadedMenuItems)) {
+        loadedMenuItems = loadedMenuItems.filter(item => {
+          if (!item) return false;
+          if (item.id && demoItemIds.has(item.id)) return false;
+          if (item.name && demoItemNames.some(dName => item.name.trim() === dName.trim())) return false;
+          return true;
+        });
+      } else {
+        loadedMenuItems = [];
+      }
+      const menuItems = ref(loadedMenuItems);
+
+      const defaultOptionGroups = [];
+
+      const loadedStoredGroups = safeGetJSON('wpos_modifier_groups', safeGetJSON('wpos_option_groups', null));
+      const normalizedOptionGroups = (loadedStoredGroups && Array.isArray(loadedStoredGroups))
+        ? loadedStoredGroups.map(g => ({
+            id: g.id,
+            name: g.name,
+            is_multiple_choice: g.is_multiple_choice !== undefined ? g.is_multiple_choice : (g.type === 'multiple'),
+            options: (g.options || []).map((opt, oIdx) => ({
+              id: opt.id || ('opt_' + g.id + '_' + oIdx),
+              name: opt.name,
+              extra_price: opt.extra_price !== undefined ? opt.extra_price : (opt.extra || 0)
+            }))
+          }))
+        : defaultOptionGroups;
+      const optionGroups = ref(normalizedOptionGroups);
+
+      // 3. Search & Category Filters
+      const searchQuery = ref('');
+      const selectedCategory = ref('all');
+
+      const availableMenuItems = computed(() => {
+        return menuItems.value.filter(m => m.is_delivery_available !== false);
+      });
+
+      const filteredMenuItems = computed(() => {
+        return availableMenuItems.value.filter(item => {
+          const matchCat = selectedCategory.value === 'all' || item.category_id === selectedCategory.value;
+          const matchSearch = !searchQuery.value || item.name.toLowerCase().includes(searchQuery.value.toLowerCase());
+          return matchCat && matchSearch;
+        });
+      });
+
+      // 4. Modifiers Modal State
+      const isModifierModalOpen = ref(false);
+      const activeItem = ref(null);
+      const modalQty = ref(1);
+      const modalNote = ref('');
+      const selectedOptions = ref({});
+
+      const activeItemOptionGroups = computed(() => {
+        if (!activeItem.value || !activeItem.value.optionGroupIds) return [];
+        return optionGroups.value.filter(g => activeItem.value.optionGroupIds.includes(g.id));
+      });
+
+      const handleMenuItemClick = (item) => {
+        if (!store.value.is_store_delivery_open || item.is_available === false) return;
+        activeItem.value = item;
+        modalQty.value = 1;
+        modalNote.value = '';
+        selectedOptions.value = {};
+
+        if (!item.optionGroupIds || item.optionGroupIds.length === 0) {
+          addDirectlyToCart(item);
+          return;
+        }
+
+        activeItemOptionGroups.value.forEach(grp => {
+          if (!grp.is_multiple_choice && grp.options && grp.options.length > 0) {
+            selectedOptions.value[grp.id] = grp.options[0].id;
+          } else if (grp.is_multiple_choice) {
+            selectedOptions.value[grp.id] = [];
+          }
+        });
+
+        isModifierModalOpen.value = true;
+      };
+
+      const isOptionSelected = (group, opt) => {
+        if (!group.is_multiple_choice) {
+          return selectedOptions.value[group.id] === opt.id;
+        } else {
+          const arr = selectedOptions.value[group.id] || [];
+          return arr.includes(opt.id);
+        }
+      };
+
+      const selectSingleOption = (group, opt) => {
+        selectedOptions.value[group.id] = opt.id;
+      };
+
+      const toggleMultiOption = (group, opt) => {
+        if (!selectedOptions.value[group.id]) {
+          selectedOptions.value[group.id] = [];
+        }
+        const idx = selectedOptions.value[group.id].indexOf(opt.id);
+        if (idx >= 0) {
+          selectedOptions.value[group.id].splice(idx, 1);
+        } else {
+          selectedOptions.value[group.id].push(opt.id);
+        }
+      };
+
+      const modalItemUnitPrice = computed(() => {
+        if (!activeItem.value) return 0;
+        let base = activeItem.value.delivery_price || activeItem.value.price || 0;
+        activeItemOptionGroups.value.forEach(grp => {
+          if (!grp.is_multiple_choice) {
+            const selectedId = selectedOptions.value[grp.id];
+            const opt = grp.options.find(o => o.id === selectedId);
+            if (opt) base += (opt.extra_price || 0);
+          } else {
+            const selectedIds = selectedOptions.value[grp.id] || [];
+            selectedIds.forEach(id => {
+              const opt = grp.options.find(o => o.id === id);
+              if (opt) base += (opt.extra_price || 0);
+            });
+          }
+        });
+        return base;
+      });
+
+      const modalItemTotalPrice = computed(() => {
+        return modalItemUnitPrice.value * modalQty.value;
+      });
+
+      // 5. Cart Management
+      const cart = ref([]);
+      const isCheckoutOpen = ref(false);
+
+      const addDirectlyToCart = (item) => {
+        const unitPrice = item.delivery_price || item.price;
+        const existingIdx = cart.value.findIndex(c => c.itemId === item.id && !c.selectedOptionsText && !c.note);
+        if (existingIdx >= 0) {
+          cart.value[existingIdx].quantity += 1;
+        } else {
+          cart.value.push({
+            itemId: item.id,
+            name: item.name,
+            unitPrice: unitPrice,
+            quantity: 1,
+            selectedOptionsText: '',
+            note: ''
+          });
+        }
+      };
+
+      const confirmAddToCart = () => {
+        const textParts = [];
+        activeItemOptionGroups.value.forEach(grp => {
+          if (!grp.is_multiple_choice) {
+            const opt = grp.options.find(o => o.id === selectedOptions.value[grp.id]);
+            if (opt) textParts.push(opt.name);
+          } else {
+            const ids = selectedOptions.value[grp.id] || [];
+            ids.forEach(id => {
+              const opt = grp.options.find(o => o.id === id);
+              if (opt) textParts.push(opt.name);
+            });
+          }
+        });
+
+        cart.value.push({
+          itemId: activeItem.value.id,
+          name: activeItem.value.name,
+          unitPrice: modalItemUnitPrice.value,
+          quantity: modalQty.value,
+          selectedOptionsText: textParts.join(', '),
+          note: modalNote.value.trim()
+        });
+
+        isModifierModalOpen.value = false;
+      };
+
+      const updateCartQty = (idx, delta) => {
+        const next = cart.value[idx].quantity + delta;
+        if (next <= 0) {
+          cart.value.splice(idx, 1);
+        } else {
+          cart.value[idx].quantity = next;
+        }
+      };
+
+      const clearCart = () => {
+        cart.value = [];
+        isCheckoutOpen.value = false;
+      };
+
+      const cartTotalItems = computed(() => {
+        return cart.value.reduce((sum, item) => sum + item.quantity, 0);
+      });
+
+      const cartSubtotal = computed(() => {
+        return cart.value.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
+      });
+
+      // 6. Customer Checkout Form & Pinning System
+      const customerForm = ref({
+        name: localStorage.getItem('wpos_cust_name') || '',
+        phone: localStorage.getItem('wpos_cust_phone') || '',
+        note: localStorage.getItem('wpos_cust_note') || '',
+        isPinned: true,
+        pinnedAddress: 'พิกัด GPS: 13.7450, 100.5250',
+        distanceKm: 2.5,
+        lat: 13.7450,
+        lng: 100.5250
+      });
+
+      // Map Pinning Modal State
+      const isMapPickerOpen = ref(false);
+      let pickerMapInstance = null;
+      const pickerLat = ref(13.7450);
+      const pickerLng = ref(100.5250);
+      const pickerDistanceKm = ref(2.5);
+      const isLocating = ref(false);
+
+      const isPickerOutOfRange = computed(() => {
+        const d = parseFloat(pickerDistanceKm.value) || 0;
+        const maxKm = store.value.max_delivery_km || 15.0;
+        return d > maxKm;
+      });
+
+      const pickerDeliveryFee = computed(() => {
+        const d = parseFloat(pickerDistanceKm.value) || 2.0;
+        const baseKm = store.value.base_delivery_km || 2.0;
+        const baseFee = store.value.base_delivery_fee || 20.0;
+        const extraFee = store.value.extra_delivery_fee_per_km || 10.0;
+        if (d <= baseKm) return baseFee;
+        return baseFee + Math.ceil(d - baseKm) * extraFee;
+      });
+
+      const pickerCoordsText = computed(() => {
+        return 'Lat: ' + pickerLat.value.toFixed(4) + ', Lng: ' + pickerLng.value.toFixed(4);
+      });
+
+      const isRoutingLoading = ref(false);
+      const routeModeBadgeText = ref('ถนนจริง (OSRM)');
+      let routingDebounceTimer = null;
+
+      const fetchRoadRoutingDistance = async (targetLat, targetLng) => {
+        const storeLat = store.value.store_lat || 13.7563;
+        const storeLng = store.value.store_lng || 100.5018;
+        const dLat = (targetLat - storeLat) * 111;
+        const dLng = (targetLng - storeLng) * 108;
+        const straightDist = Math.max(0.5, parseFloat(Math.sqrt(dLat * dLat + dLng * dLng).toFixed(1)));
+
+        // If store configured straight-line mode only
+        if (store.value.distance_calc_mode === 'straight_line') {
+          const mult = store.value.detour_multiplier || 1.0;
+          pickerDistanceKm.value = parseFloat((straightDist * mult).toFixed(1));
+          routeModeBadgeText.value = mult > 1.0 ? `เส้นตรง (x${mult})` : 'เส้นตรง';
+          return;
+        }
+
+        // Road routing mode via OSRM (100% Free OpenStreetMap Driving API)
+        isRoutingLoading.value = true;
+        routeModeBadgeText.value = 'กำลังคำนวณถนนจริง...';
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 3500);
+          const url = `https://router.project-osrm.org/route/v1/driving/${storeLng},${storeLat};${targetLng},${targetLat}?overview=false`;
+          const res = await fetch(url, { signal: controller.signal });
+          clearTimeout(timer);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.routes && data.routes.length > 0) {
+              const roadKm = parseFloat((data.routes[0].distance / 1000).toFixed(1));
+              pickerDistanceKm.value = Math.max(0.5, roadKm);
+              routeModeBadgeText.value = 'ถนนจริง (OSRM)';
+              isRoutingLoading.value = false;
+              return;
+            }
+          }
+        } catch (e) {
+          // Fallback on network timeout or offline
+        }
+        isRoutingLoading.value = false;
+        const mult = store.value.detour_multiplier || 1.3;
+        pickerDistanceKm.value = parseFloat((straightDist * mult).toFixed(1));
+        routeModeBadgeText.value = `ออฟไลน์ (x${mult} เผื่ออ้อม)`;
+      };
+
+      const updatePickerCalculations = (lat, lng, isFinal = false) => {
+        pickerLat.value = lat;
+        pickerLng.value = lng;
+        const storeLat = store.value.store_lat || 13.7563;
+        const storeLng = store.value.store_lng || 100.5018;
+        const dLat = (lat - storeLat) * 111;
+        const dLng = (lng - storeLng) * 108;
+        const straightDist = Math.max(0.5, parseFloat(Math.sqrt(dLat * dLat + dLng * dLng).toFixed(1)));
+
+        if (!isFinal) {
+          // Quick smooth preview during dragging map
+          const mult = (store.value.distance_calc_mode === 'straight_line') ? (store.value.detour_multiplier || 1.0) : (store.value.detour_multiplier || 1.3);
+          pickerDistanceKm.value = parseFloat((straightDist * mult).toFixed(1));
+        } else {
+          // Debounced exact road route on drag stop
+          if (routingDebounceTimer) clearTimeout(routingDebounceTimer);
+          routingDebounceTimer = setTimeout(() => {
+            fetchRoadRoutingDistance(lat, lng);
+          }, 250);
+        }
+      };
+
+      const initPickerMap = () => {
+        const initialLat = customerForm.value.lat || 13.7450;
+        const initialLng = customerForm.value.lng || 100.5250;
+        pickerLat.value = initialLat;
+        pickerLng.value = initialLng;
+        updatePickerCalculations(initialLat, initialLng, true);
+
+        if (!pickerMapInstance) {
+          pickerMapInstance = L.map('pickerMap', { zoomControl: false }).setView([initialLat, initialLng], 15);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap'
+          }).addTo(pickerMapInstance);
+
+          // Add store reference pin
+          const storeLat = store.value.store_lat || 13.7563;
+          const storeLng = store.value.store_lng || 100.5018;
+          const storeIcon = L.divIcon({
+            className: 'store-ref-pin',
+            html: '<div style="background-color:#1E293B; color:#fff; width:30px; height:30px; border-radius:10px; display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 3px 6px rgba(0,0,0,0.3); font-size:12px;"><i class="fa-solid fa-store text-orange-400"></i></div>',
+            iconSize: [30, 30],
+            iconAnchor: [15, 15]
+          });
+          L.marker([storeLat, storeLng], { icon: storeIcon }).addTo(pickerMapInstance).bindPopup('<b>ร้านอาหาร</b>');
+
+          pickerMapInstance.on('move', () => {
+            const center = pickerMapInstance.getCenter();
+            updatePickerCalculations(center.lat, center.lng, false);
+          });
+          pickerMapInstance.on('moveend', () => {
+            const center = pickerMapInstance.getCenter();
+            updatePickerCalculations(center.lat, center.lng, true);
+          });
+        } else {
+          pickerMapInstance.setView([initialLat, initialLng], 15);
+          setTimeout(() => {
+            pickerMapInstance.invalidateSize();
+            updatePickerCalculations(initialLat, initialLng, true);
+          }, 100);
+        }
+      };
+
+      const openMapPicker = () => {
+        isMapPickerOpen.value = true;
+        setTimeout(() => {
+          initPickerMap();
+        }, 150);
+      };
+
+      const locatePickerToGPS = () => {
+        if (!navigator.geolocation) {
+          alert('อุปกรณ์ของคุณไม่รองรับ GPS');
+          return;
+        }
+        isLocating.value = true;
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            isLocating.value = false;
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            if (pickerMapInstance) {
+              pickerMapInstance.flyTo([lat, lng], 16);
+            }
+            updatePickerCalculations(lat, lng, true);
+          },
+          (err) => {
+            isLocating.value = false;
+            alert('ไม่สามารถดึงตำแหน่ง GPS ได้ กรุณาเลื่อนแผนที่ด้วยตนเองค่ะ');
+          },
+          { timeout: 8000, enableHighAccuracy: true }
+        );
+      };
+
+      const confirmPinLocation = () => {
+        if (isPickerOutOfRange.value) {
+          alert('ตำแหน่งที่เลือกอยู่ห่างจากร้าน ' + pickerDistanceKm.value + ' กม. ซึ่งเกินระยะทางจัดส่งสูงสุดที่ร้านรับ (' + (store.value.max_delivery_km || 15) + ' กม.) ค่ะ');
+          return;
+        }
+        customerForm.value.lat = pickerLat.value;
+        customerForm.value.lng = pickerLng.value;
+        customerForm.value.distanceKm = pickerDistanceKm.value;
+        customerForm.value.isPinned = true;
+        customerForm.value.pinnedAddress = 'พิกัด GPS: ' + pickerLat.value.toFixed(4) + ', ' + pickerLng.value.toFixed(4);
+        isMapPickerOpen.value = false;
+      };
+
+      const isCustomerOutOfRange = computed(() => {
+        const d = parseFloat(customerForm.value.distanceKm) || 0;
+        const maxKm = store.value.max_delivery_km || 15.0;
+        return d > maxKm;
+      });
+
+      const calculatedDeliveryFee = computed(() => {
+        const d = parseFloat(customerForm.value.distanceKm) || 2.0;
+        const baseKm = store.value.base_delivery_km || 2.0;
+        const baseFee = store.value.base_delivery_fee || 20.0;
+        const extraFee = store.value.extra_delivery_fee_per_km || 10.0;
+        if (d <= baseKm) return baseFee;
+        return baseFee + Math.ceil(d - baseKm) * extraFee;
+      });
+
+      const finalTotalAmount = computed(() => {
+        return cartSubtotal.value + calculatedDeliveryFee.value;
+      });
+
+      const paymentMethod = ref('promptpay');
+      const isSubmitting = ref(false);
+
+      const openCheckout = () => {
+        if (cart.value.length === 0) return;
+        isCheckoutOpen.value = true;
+      };
+
+      // 7. Order Submission & Dual-Mode Bridge
+      const submitOrder = async () => {
+        if (!customerForm.value.name.trim()) {
+          alert('กรุณากรอกชื่อผู้รับ');
+          return;
+        }
+        if (!customerForm.value.phone.trim() || customerForm.value.phone.length < 9) {
+          alert('กรุณากรอกเบอร์โทรศัพท์ที่ถูกต้องสำหรับติดต่อ');
+          return;
+        }
+        if (!customerForm.value.isPinned) {
+          alert('กรุณากดเลือกจุดปักหมุดจัดส่งบนแผนที่');
+          return;
+        }
+        if (isCustomerOutOfRange.value) {
+          alert('ขออภัยค่ะ ที่อยู่จัดส่งอยู่ห่างจากร้านเกินรัศมีจัดส่งสูงสุด (' + (store.value.max_delivery_km || 15) + ' กม.) ไม่สามารถจัดส่งได้ค่ะ');
+          return;
+        }
+
+        isSubmitting.value = true;
+
+        localStorage.setItem('wpos_cust_name', customerForm.value.name);
+        localStorage.setItem('wpos_cust_phone', customerForm.value.phone);
+        localStorage.setItem('wpos_cust_note', customerForm.value.note);
+
+        const fullDeliveryAddress = (customerForm.value.note ? (customerForm.value.note + ' • ') : '') + (customerForm.value.pinnedAddress || ('พิกัด GPS: ' + customerForm.value.lat.toFixed(4) + ', ' + customerForm.value.lng.toFixed(4)));
+
+        const orderId = 'DEL-' + Math.floor(100000 + Math.random() * 900000);
+        const newOrder = {
+          id: orderId,
+          customer_name: customerForm.value.name,
+          customer_phone: customerForm.value.phone,
+          delivery_address: fullDeliveryAddress,
+          delivery_note: customerForm.value.note,
+          customer_lat: customerForm.value.lat,
+          customer_lng: customerForm.value.lng,
+          distanceKm: customerForm.value.distanceKm,
+          items: cart.value.map(c => ({
+            name: c.name + (c.selectedOptionsText ? ' (' + c.selectedOptionsText + ')' : ''),
+            quantity: c.quantity,
+            price: c.unitPrice,
+            note: c.note
+          })),
+          subtotal: cartSubtotal.value,
+          delivery_fee: calculatedDeliveryFee.value,
+          net_amount: finalTotalAmount.value,
+          payment_method: paymentMethod.value,
+          payment_status: paymentMethod.value === 'promptpay' ? 'paid' : 'pending_cod',
+          delivery_status: 'new',
+          created_at: new Date().toISOString()
+        };
+
+        const existingOrders = safeGetJSON('wpos_delivery_orders', []);
+        existingOrders.unshift(newOrder);
+        localStorage.setItem('wpos_delivery_orders', JSON.stringify(existingOrders));
+
+        // Save active order and customer history for easy re-entry
+        localStorage.setItem('wpos_active_order_id', newOrder.id);
+        const savedIds = safeGetJSON('wpos_customer_order_ids', []);
+        if (!savedIds.includes(newOrder.id)) {
+          savedIds.unshift(newOrder.id);
+          localStorage.setItem('wpos_customer_order_ids', JSON.stringify(savedIds));
+        }
+
+        try {
+          const channel = new BroadcastChannel('wpos_delivery_channel');
+          channel.postMessage({ type: 'NEW_DELIVERY_ORDER', order: newOrder });
+        } catch (e) {}
+
+        const sb = window.getWposSupabaseClient ? window.getWposSupabaseClient() : null;
+        if (sb) {
+          try {
+            await sb.from('delivery_orders').insert([{
+              id: newOrder.id,
+              customer_name: newOrder.customer_name,
+              customer_phone: newOrder.customer_phone,
+              delivery_address: newOrder.delivery_address,
+              delivery_note: newOrder.delivery_note || '',
+              customer_lat: newOrder.customer_lat,
+              customer_lng: newOrder.customer_lng,
+              distance_km: newOrder.distanceKm,
+              items: newOrder.items,
+              subtotal: newOrder.subtotal,
+              delivery_fee: newOrder.delivery_fee,
+              net_amount: newOrder.net_amount,
+              payment_method: newOrder.payment_method,
+              payment_status: newOrder.payment_status,
+              delivery_status: 'new'
+            }]);
+
+            // Broadcast on Supabase Realtime channel
+            const rtChan = sb.channel('wpos_delivery_realtime');
+            await rtChan.send({
+              type: 'broadcast',
+              event: 'NEW_DELIVERY_ORDER',
+              payload: newOrder
+            });
+          } catch (e) {
+            console.warn('Supabase sync skipped/failed:', e);
+          }
+        }
+
+        setTimeout(() => {
+          isSubmitting.value = false;
+          window.location.href = 'track.html?orderId=' + newOrder.id;
+        }, 500);
+      };
+
+      // 8. Customer Order History & Active Order State
+      const isMyOrdersModalOpen = ref(false);
+      const orderSearchPhone = ref('');
+      const searchedOrders = ref([]);
+      const myOrderIds = ref(safeGetJSON('wpos_customer_order_ids', []));
+      const allDeliveryOrders = ref(safeGetJSON('wpos_delivery_orders', []));
+
+      try {
+        const channel = new BroadcastChannel('wpos_delivery_channel');
+        channel.onmessage = (e) => {
+          if (e.data.type === 'DELIVERY_STATUS_UPDATED' || e.data.type === 'NEW_DELIVERY_ORDER') {
+            allDeliveryOrders.value = safeGetJSON('wpos_delivery_orders', []);
+            myOrderIds.value = safeGetJSON('wpos_customer_order_ids', []);
+          }
+        };
+      } catch (e) {}
+
+      const myOrders = computed(() => {
+        return allDeliveryOrders.value.filter(o => myOrderIds.value.includes(o.id));
+      });
+
+      const activeOrder = computed(() => {
+        return myOrders.value.find(o => o.delivery_status !== 'completed' && o.delivery_status !== 'cancelled');
+      });
+
+      const displayedCustomerOrders = computed(() => {
+        if (searchedOrders.value.length > 0) return searchedOrders.value;
+        return myOrders.value;
+      });
+
+      const searchOrdersByPhone = () => {
+        const q = orderSearchPhone.value.trim().replace(/-/g, '');
+        if (!q) {
+          searchedOrders.value = [];
+          return;
+        }
+        searchedOrders.value = allDeliveryOrders.value.filter(o => {
+          const ph = (o.customer_phone || '').replace(/-/g, '');
+          return ph.includes(q) || (o.id && o.id.toLowerCase().includes(q.toLowerCase()));
+        });
+      };
+
+      const getStatusLabel = (st) => {
+        const map = {
+          new: 'รอร้านรับออเดอร์',
+          cooking: 'กำลังปรุงอาหาร',
+          preparing: 'กำลังเตรียมจัดส่ง',
+          delivering: 'ไรเดอร์กำลังนำส่ง',
+          completed: 'จัดส่งสำเร็จ',
+          cancelled: 'ยกเลิก'
+        };
+        return map[st] || st;
+      };
+
+      const formatOrderDate = (isoStr) => {
+        if (!isoStr) return '';
+        try {
+          const d = new Date(isoStr);
+          return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+        } catch(e) {
+          return '';
+        }
+      };
+
+      // 9. Initial Cloud Sync on Mount
+      onMounted(async () => {
+        const sb = window.getWposSupabaseClient ? window.getWposSupabaseClient() : null;
+        if (!sb) return;
+
+        try {
+          // A. Fetch store profile
+          const { data: storeData } = await sb.from('store_profile').select('*').eq('id', 'default').maybeSingle();
+          if (storeData) {
+            store.value = { ...store.value, ...storeData };
+            localStorage.setItem('wpos_store', JSON.stringify(store.value));
+          }
+
+          // B. Fetch categories
+          const { data: catData } = await sb.from('categories').select('*').order('sort_order', { ascending: true });
+          if (catData && catData.length > 0) {
+            categories.value = catData;
+            localStorage.setItem('wpos_categories', JSON.stringify(catData));
+          }
+
+          // C. Fetch option groups
+          const { data: optData } = await sb.from('option_groups').select('*');
+          if (optData && optData.length > 0) {
+            optionGroups.value = optData.map(g => ({
+              id: g.id,
+              name: g.name,
+              is_multiple_choice: g.is_multiple_choice !== undefined ? g.is_multiple_choice : (g.type === 'multiple'),
+              options: g.options || []
+            }));
+            localStorage.setItem('wpos_option_groups', JSON.stringify(optionGroups.value));
+          }
+
+          // D. Fetch menu items for delivery
+          const { data: menuData } = await sb.from('menu_items').select('*').eq('is_delivery_available', true).eq('is_available', true);
+          if (menuData && menuData.length > 0) {
+            menuItems.value = menuData.map(m => ({
+              id: m.id,
+              name: m.name,
+              price: m.price,
+              delivery_price: m.delivery_price || m.price,
+              category_id: m.category_id,
+              is_available: m.is_available !== false,
+              is_delivery_available: m.is_delivery_available !== false,
+              optionGroupIds: m.option_group_ids || m.optionGroupIds || [],
+              image: m.image_url || m.image || ''
+            }));
+            localStorage.setItem('wpos_menu_items', JSON.stringify(menuItems.value));
+          }
+        } catch (err) {
+          console.warn('Initial cloud sync from Supabase failed, using cached data:', err);
+        }
+      });
+
+      return {
+        isMyOrdersModalOpen,
+        orderSearchPhone,
+        searchedOrders,
+        myOrders,
+        activeOrder,
+        displayedCustomerOrders,
+        searchOrdersByPhone,
+        getStatusLabel,
+        formatOrderDate,
+        store,
+        categories,
+        availableMenuItems,
+        filteredMenuItems,
+        searchQuery,
+        selectedCategory,
+        handleMenuItemClick,
+        isModifierModalOpen,
+        activeItem,
+        activeItemOptionGroups,
+        modalQty,
+        modalNote,
+        selectedOptions,
+        isOptionSelected,
+        selectSingleOption,
+        toggleMultiOption,
+        modalItemTotalPrice,
+        confirmAddToCart,
+        cart,
+        cartTotalItems,
+        cartSubtotal,
+        updateCartQty,
+        clearCart,
+        isCheckoutOpen,
+        openCheckout,
+        customerForm,
+        isMapPickerOpen,
+        openMapPicker,
+        locatePickerToGPS,
+        confirmPinLocation,
+        pickerDistanceKm,
+        pickerDeliveryFee,
+        pickerCoordsText,
+        isPickerOutOfRange,
+        isCustomerOutOfRange,
+        isRoutingLoading,
+        routeModeBadgeText,
+        isLocating,
+        calculatedDeliveryFee,
+        finalTotalAmount,
+        paymentMethod,
+        isSubmitting,
+        submitOrder
+      };
+    }
+  }).mount('#app');
+</script>
+
+</body>
+</html>

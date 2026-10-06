@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ติดตามสถานะเดลิเวอรี่แบบเรียลไทม์</title>
+  <!-- Google Fonts: Prompt -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome 6 CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Leaflet.js CSS & JS CDN (100% Free OpenStreetMap) with Failover -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    if (typeof L === 'undefined') {
+      document.write('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">');
+      document.write('<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"><\/script>');
+    }
+  </script>
+  <!-- Supabase JS Client v2 with Failover -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    if (typeof supabase === 'undefined') {
+      document.write('<script src="https://unpkg.com/@supabase/supabase-js@2"><\/script>');
+    }
+  </script>
+  <!-- Global Configuration & Supabase Connection Bridge -->
+  <script src="config.js"></script>
+  <!-- Vue 3 Global Build CDN with Failover -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script>
+    if (typeof Vue === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"><\/script>');
+    }
+  </script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Prompt', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              active: '#086687',
+              accent: '#F97316',
+              green: '#10B981',
+              dark: '#1E293B',
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    [v-cloak] { display: none !important; }
+    body { font-family: 'Prompt', sans-serif; -webkit-tap-highlight-color: transparent; }
+    #map { height: 320px; width: 100%; border-radius: 1.25rem; z-index: 10; }
+    .pulse-ring {
+      border: 3px solid #10B981;
+      border-radius: 50%;
+      height: 38px;
+      width: 38px;
+      position: absolute;
+      left: -5px;
+      top: -5px;
+      animation: pulsate 1.5s ease-out infinite;
+      opacity: 0;
+    }
+    @keyframes pulsate {
+      0% { transform: scale(0.6); opacity: 1; }
+      100% { transform: scale(1.4); opacity: 0; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen pb-12">
+
+<div id="app" v-cloak class="max-w-md mx-auto min-h-screen bg-white shadow-xl relative flex flex-col">
+
+  <!-- ========================================================
+       1. TOP HEADER & ORDER ID
+  ======================================================== -->
+  <header class="bg-brand-dark text-white p-4 shadow flex items-center justify-between sticky top-0 z-30">
+    <div class="flex items-center space-x-2">
+      <a href="order.html" class="w-8 h-8 rounded-xl bg-slate-800 flex items-center justify-center text-slate-300 hover:text-white">
+        <i class="fa-solid fa-arrow-left text-xs"></i>
+      </a>
+      <div>
+        <h1 class="font-bold text-sm text-white">ติดตามออเดอร์เดลิเวอรี่</h1>
+        <div class="flex items-center space-x-1.5 mt-0.5">
+          <p class="text-[10px] text-slate-400 font-mono">รหัสออเดอร์: #{{ order ? order.id : '-' }}</p>
+          <button v-if="customerOrdersList.length > 1" @click="isSwitchOrderModalOpen = true" class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-sky-300 text-[10px] px-2 py-0.5 rounded-lg flex items-center space-x-1 transition border border-slate-700">
+            <i class="fa-solid fa-repeat text-[8px]"></i>
+            <span>สลับออเดอร์ ({{ customerOrdersList.length }})</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="flex items-center space-x-2">
+      <span v-if="order" class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold"
+        :class="{
+          'bg-rose-500/20 text-rose-300 border border-rose-500/30': currentStatus === 'new',
+          'bg-amber-500/20 text-amber-300 border border-amber-500/30': currentStatus === 'cooking',
+          'bg-sky-500/20 text-sky-300 border border-sky-500/30 animate-pulse': currentStatus === 'delivering',
+          'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30': currentStatus === 'completed'
+        }">
+        <i class="fa-solid fa-circle text-[6px] mr-1.5" :class="{
+          'text-rose-400': currentStatus === 'new',
+          'text-amber-400': currentStatus === 'cooking',
+          'text-sky-400': currentStatus === 'delivering',
+          'text-emerald-400': currentStatus === 'completed'
+        }"></i>
+        {{ statusLabel }}
+      </span>
+      <span v-else class="text-[10px] text-slate-400">ไม่มีออเดอร์</span>
+    </div>
+  </header>
+
+  <template v-if="order">
+  <!-- ========================================================
+       2. STATUS STEPPER (4 STAGES)
+  ======================================================== -->
+  <section class="p-4 bg-slate-50 border-b border-slate-200/80">
+    <div class="relative flex items-center justify-between text-center">
+      <!-- Stepper Connecting Line -->
+      <div class="absolute left-6 right-6 top-3.5 h-1 bg-slate-200 -z-0">
+        <div class="h-full bg-emerald-500 transition-all duration-500" :style="{ width: progressPercent + '%' }"></div>
+      </div>
+
+      <!-- Step 1: Placed -->
+      <div class="relative z-10 flex flex-col items-center">
+        <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition shadow-sm"
+          :class="stepIndex >= 1 ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'">
+          <i class="fa-solid fa-receipt"></i>
+        </div>
+        <span class="text-[10px] font-semibold mt-1" :class="stepIndex >= 1 ? 'text-slate-800' : 'text-slate-400'">สั่งสำเร็จ</span>
+      </div>
+
+      <!-- Step 2: Cooking -->
+      <div class="relative z-10 flex flex-col items-center">
+        <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition shadow-sm"
+          :class="stepIndex >= 2 ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'">
+          <i class="fa-solid fa-kitchen-set"></i>
+        </div>
+        <span class="text-[10px] font-semibold mt-1" :class="stepIndex >= 2 ? 'text-slate-800' : 'text-slate-400'">กำลังปรุง</span>
+      </div>
+
+      <!-- Step 3: Delivering -->
+      <div class="relative z-10 flex flex-col items-center">
+        <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition shadow-sm"
+          :class="stepIndex >= 3 ? 'bg-emerald-500 text-white animate-bounce' : 'bg-slate-200 text-slate-500'">
+          <i class="fa-solid fa-motorcycle"></i>
+        </div>
+        <span class="text-[10px] font-semibold mt-1" :class="stepIndex >= 3 ? 'text-slate-800' : 'text-slate-400'">กำลังนำส่ง</span>
+      </div>
+
+      <!-- Step 4: Completed -->
+      <div class="relative z-10 flex flex-col items-center">
+        <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition shadow-sm"
+          :class="stepIndex >= 4 ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'">
+          <i class="fa-solid fa-circle-check"></i>
+        </div>
+        <span class="text-[10px] font-semibold mt-1" :class="stepIndex >= 4 ? 'text-slate-800' : 'text-slate-400'">ส่งสำเร็จ</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================================================
+       3. INTERACTIVE LEAFLET.JS LIVE GPS MAP
+  ======================================================== -->
+  <section class="p-4 space-y-2">
+    <div class="flex items-center justify-between text-xs">
+      <h2 class="font-bold text-slate-800 flex items-center">
+        <i class="fa-solid fa-map-location-dot text-brand-active mr-1.5"></i> แผนที่ติดตามพิกัดไรเดอร์สด
+      </h2>
+      <span v-if="currentStatus === 'delivering'" class="text-[10px] text-emerald-600 font-bold flex items-center">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping mr-1"></span>
+        GPS อัปเดตสด
+      </span>
+      <span v-else class="text-[10px] text-slate-400">
+        {{ currentStatus === 'completed' ? 'จัดส่งเรียบร้อยแล้ว' : 'กำลังเตรียมอาหารที่ร้าน' }}
+      </span>
+    </div>
+
+    <!-- Map Container -->
+    <div class="relative rounded-2xl overflow-hidden border border-slate-300 shadow-inner">
+      <div id="map"></div>
+      
+      <!-- Overlay status banner inside map -->
+      <div v-if="currentStatus === 'new'" class="absolute bottom-3 left-3 right-3 z-[400] bg-white/90 backdrop-blur p-2.5 rounded-xl border border-slate-200 shadow-md text-xs flex items-center space-x-2">
+        <i class="fa-solid fa-clock-rotate-left text-amber-500 text-base"></i>
+        <div>
+          <div class="font-bold text-slate-800">รอทางร้านรับออเดอร์</div>
+          <div class="text-[10px] text-slate-500">ระบบส่งออเดอร์ไปยังเครื่อง POS หน้าร้านแล้ว</div>
+        </div>
+      </div>
+
+      <div v-else-if="currentStatus === 'cooking'" class="absolute bottom-3 left-3 right-3 z-[400] bg-white/90 backdrop-blur p-2.5 rounded-xl border border-slate-200 shadow-md text-xs flex items-center space-x-2">
+        <i class="fa-solid fa-fire-burner text-orange-500 text-base"></i>
+        <div>
+          <div class="font-bold text-slate-800">ครัวกำลังปรุงอาหารสดใหม่</div>
+          <div class="text-[10px] text-slate-500">เมื่ออาหารปรุงเสร็จ ไรเดอร์จะเริ่มออกเดินทางทันที</div>
+        </div>
+      </div>
+
+      <div v-else-if="currentStatus === 'delivering'" class="absolute bottom-3 left-3 right-3 z-[400] bg-white/95 backdrop-blur p-2.5 rounded-xl border border-sky-200 shadow-md text-xs flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <div class="w-8 h-8 rounded-full bg-sky-500 text-white flex items-center justify-center font-bold">
+            <i class="fa-solid fa-motorcycle text-xs"></i>
+          </div>
+          <div>
+            <div class="font-bold text-slate-800">ไรเดอร์กำลังมุ่งหน้าไปหาคุณ</div>
+            <div class="text-[10px] text-slate-500">ระยะทางประมาณ {{ (order.distanceKm || 2.5) }} กม.</div>
+          </div>
+        </div>
+        <a :href="'tel:' + (order.rider_phone || '0891234567')" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold p-2 rounded-xl text-xs shadow flex items-center space-x-1">
+          <i class="fa-solid fa-phone text-[10px]"></i>
+          <span class="text-[10px]">โทรหาไรเดอร์</span>
+        </a>
+      </div>
+
+      <div v-else-if="currentStatus === 'completed'" class="absolute bottom-3 left-3 right-3 z-[400] bg-emerald-50/95 backdrop-blur p-2.5 rounded-xl border border-emerald-300 shadow-md text-xs flex items-center space-x-2 text-emerald-800">
+        <i class="fa-solid fa-circle-check text-emerald-600 text-lg"></i>
+        <div>
+          <div class="font-bold">อาหารถึงมือคุณเรียบร้อยแล้ว!</div>
+          <div class="text-[10px] text-emerald-700">ขอให้อร่อยกับมื้ออาหาร ขอบคุณที่ใช้บริการค่ะ</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================================================
+       4. RIDER & STORE CONTACT CARD
+  ======================================================== -->
+  <section class="px-4 py-2 space-y-3">
+    <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between shadow-sm">
+      <div class="flex items-center space-x-3">
+        <div class="w-12 h-12 rounded-2xl bg-brand-active text-white flex items-center justify-center font-bold text-xl shadow">
+          <i class="fa-solid fa-helmet-safety"></i>
+        </div>
+        <div>
+          <div class="text-[10px] text-slate-400 font-semibold">พนักงานส่งของของทางร้าน:</div>
+          <div class="font-bold text-slate-800 text-sm">{{ order.rider_name || 'ไรเดอร์ประจำร้าน' }}</div>
+          <div class="text-[10px] text-slate-500 flex items-center mt-0.5">
+            <span class="bg-emerald-100 text-emerald-700 font-bold px-1.5 py-0.2 rounded mr-1">ประจำร้าน</span>
+            <span>มอเตอร์ไซค์ฮอนด้า เวฟ</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <a v-if="order.rider_phone || store.phone" :href="'tel:' + (order.rider_phone || store.phone)" class="w-10 h-10 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center shadow-md transition">
+          <i class="fa-solid fa-phone text-sm"></i>
+        </a>
+      </div>
+    </div>
+
+    <!-- Delivery Address Card -->
+    <div class="p-3.5 bg-white border border-slate-200 rounded-2xl space-y-1.5 text-xs shadow-sm">
+      <div class="font-bold text-slate-700 flex items-center">
+        <i class="fa-solid fa-location-dot text-rose-500 mr-1.5"></i> สถานที่จัดส่ง
+      </div>
+      <div class="font-medium text-slate-800">{{ order.customer_name }} ({{ order.customer_phone }})</div>
+      <div class="text-slate-500 text-[11px] leading-relaxed">{{ order.delivery_address }}</div>
+      <div v-if="order.delivery_note" class="mt-2 p-2 bg-amber-50 rounded-lg border border-amber-200 text-amber-900 text-[11px] flex items-start space-x-1.5">
+        <i class="fa-solid fa-comment-dots text-amber-600 mt-0.5 shrink-0"></i>
+        <div><span class="font-bold">โน้ตถึงไรเดอร์: </span><span>{{ order.delivery_note }}</span></div>
+      </div>
+    </div>
+
+    <!-- Order Items Summary Dropdown -->
+    <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm text-xs">
+      <div @click="isItemsExpanded = !isItemsExpanded" class="p-3.5 bg-slate-50 border-b border-slate-200 flex justify-between items-center cursor-pointer hover:bg-slate-100 transition">
+        <span class="font-bold text-slate-800">
+          <i class="fa-solid fa-bag-shopping text-brand-active mr-1.5"></i> รายการอาหาร ({{ order.items ? order.items.length : 0 }} รายการ)
+        </span>
+        <div class="flex items-center space-x-1.5 text-slate-500">
+          <span class="font-mono font-bold text-brand-active">฿{{ (order.net_amount || 0).toLocaleString() }}</span>
+          <i class="fa-solid text-xs" :class="isItemsExpanded ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+        </div>
+      </div>
+
+      <div v-if="isItemsExpanded" class="p-3.5 space-y-2 divide-y divide-slate-100">
+        <div v-for="(it, i) in order.items" :key="i" class="pt-2 first:pt-0 flex justify-between items-start">
+          <div>
+            <span class="font-bold text-slate-800">{{ it.name }}</span>
+            <span class="text-slate-400 ml-1">x {{ it.quantity }}</span>
+            <div v-if="it.note" class="text-[10px] text-orange-600 italic">โน้ต: {{ it.note }}</div>
+          </div>
+          <span class="font-mono font-bold text-slate-700">฿{{ ((it.price || 0) * (it.quantity || 1)).toLocaleString() }}</span>
+        </div>
+
+        <div class="pt-2 space-y-1 text-slate-500 text-[11px]">
+          <div class="flex justify-between">
+            <span>ค่าอาหาร:</span>
+            <span class="font-mono">฿{{ (order.subtotal || 0).toLocaleString() }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span>ค่าจัดส่ง:</span>
+            <span class="font-mono">฿{{ (order.delivery_fee || 0).toLocaleString() }}</span>
+          </div>
+          <div class="flex justify-between font-bold text-slate-800 text-xs pt-1 border-t border-slate-200">
+            <span>ยอดสุทธิ:</span>
+            <span class="font-mono text-brand-active text-sm">฿{{ (order.net_amount || 0).toLocaleString() }}</span>
+          </div>
+          <div class="flex justify-between items-center pt-1">
+            <span>สถานะชำระเงิน:</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold"
+              :class="order.payment_method === 'promptpay' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'">
+              {{ order.payment_method === 'promptpay' ? 'ชำระผ่าน PromptPay แล้ว' : 'เก็บเงินสดปลายทาง (COD)' }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  </template>
+
+  <!-- EMPTY STATE (NO ACTIVE OR FOUND ORDER) -->
+  <div v-else class="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4 my-auto">
+    <div class="w-20 h-20 mx-auto rounded-full bg-slate-100 flex items-center justify-center text-slate-300 text-3xl">
+      <i class="fa-solid fa-receipt"></i>
+    </div>
+    <div class="space-y-1">
+      <h3 class="font-bold text-slate-700 text-base">ไม่พบข้อมูลออเดอร์</h3>
+      <p class="text-xs text-slate-400">ยังไม่มีข้อมูลออเดอร์ที่กำลังจัดส่ง หรือออเดอร์นี้สิ้นสุดแล้ว</p>
+    </div>
+    <a href="order.html" class="inline-flex items-center space-x-2 bg-brand-active hover:bg-sky-800 text-white font-bold px-5 py-2.5 rounded-xl text-xs shadow-md transition">
+      <i class="fa-solid fa-utensils"></i>
+      <span>ไปยังหน้าสั่งอาหารออนไลน์</span>
+    </a>
+  </div>
+
+
+
+  <!-- ========================================================
+       6. SWITCH ORDER MODAL
+  ======================================================== -->
+  <div v-if="isSwitchOrderModalOpen" class="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl animate-fadeIn">
+      <div class="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 shrink-0">
+        <div class="flex items-center space-x-2">
+          <div class="w-8 h-8 rounded-xl bg-brand-dark text-white flex items-center justify-center text-sm shadow-sm">
+            <i class="fa-solid fa-list-check"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-sm text-slate-800">เลือกออเดอร์ที่ต้องการติดตาม</h3>
+            <p class="text-[10px] text-slate-500">คุณมีประวัติการสั่งซื้อ {{ customerOrdersList.length }} รายการ</p>
+          </div>
+        </div>
+        <button @click="isSwitchOrderModalOpen = false" class="p-1 text-slate-400 hover:text-slate-600 text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="p-4 overflow-y-auto space-y-2.5 flex-1">
+        <div v-for="ord in customerOrdersList" :key="ord.id" 
+          @click="selectOrder(ord.id)"
+          :class="ord.id === orderId ? 'border-sky-500 bg-sky-50/40 ring-1 ring-sky-400' : 'border-slate-200 bg-white hover:border-slate-300'"
+          class="p-3.5 rounded-2xl border cursor-pointer transition flex justify-between items-center shadow-sm">
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="font-mono font-bold text-xs text-slate-800">#{{ ord.id }}</span>
+              <span v-if="ord.id === orderId" class="bg-sky-600 text-white text-[9px] px-1.5 py-0.2 rounded-md font-bold">กำลังดู</span>
+            </div>
+            <div class="text-[11px] text-slate-500 mt-1">
+              {{ (ord.items || []).map(i => i.name).join(', ').substring(0, 35) }}...
+            </div>
+            <div class="text-[10px] text-slate-400 font-mono mt-0.5">฿{{ ord.net_amount }} • {{ ord.delivery_status }}</div>
+          </div>
+          <i class="fa-solid fa-chevron-right text-slate-400 text-xs"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ========================================================
+     VUE 3 APPLICATION LOGIC
+======================================================== -->
+<script>
+  const { createApp, ref, computed, onMounted } = Vue;
+
+  const app = createApp({
+    setup() {
+      const urlParams = new URLSearchParams(window.location.search);
+
+      const safeGetJSON = (key, fallback) => {
+        try {
+          const item = localStorage.getItem(key);
+          return item ? JSON.parse(item) : fallback;
+        } catch (e) {
+          return fallback;
+        }
+      };
+
+      // FACTORY CLEAN CHECK: Auto-purge legacy demo data on fresh start
+      try {
+        const legacyStore = localStorage.getItem('wpos_store');
+        if (legacyStore && (legacyStore.includes('02-123-4567') || legacyStore.includes('0105559123456') || legacyStore.includes('สุขุมวิท') || legacyStore.includes('วงใน ฟู้ดสตอรี่'))) {
+          localStorage.removeItem('wpos_store');
+          localStorage.removeItem('wpos_active_order_id');
+          localStorage.removeItem('wpos_customer_order_ids');
+          localStorage.removeItem('wpos_delivery_orders');
+        }
+      } catch (e) {}
+
+      const myOrderIds = safeGetJSON('wpos_customer_order_ids', []);
+      let targetId = urlParams.get('orderId');
+      if (!targetId) {
+        targetId = localStorage.getItem('wpos_active_order_id');
+        if (!targetId && myOrderIds.length > 0) {
+          targetId = myOrderIds[0];
+        }
+      }
+      const orderId = ref(targetId || '');
+      const isSwitchOrderModalOpen = ref(false);
+
+      const store = ref(safeGetJSON('wpos_store', {
+        name: '',
+        phone: '',
+        store_lat: 13.7563,
+        store_lng: 100.5018
+      }));
+
+      // Find order from LocalStorage
+      const deliveryOrders = ref(safeGetJSON('wpos_delivery_orders', []));
+
+      const customerOrdersList = computed(() => {
+        return deliveryOrders.value.filter(o => myOrderIds.includes(o.id));
+      });
+
+      const defaultRiders = safeGetJSON('wpos_riders', []);
+      const defaultRider = (Array.isArray(defaultRiders) && defaultRiders[0]) ? defaultRiders[0] : null;
+
+      let initialOrder = deliveryOrders.value.find(o => o.id === orderId.value);
+      if (!initialOrder && customerOrdersList.value.length > 0) {
+        initialOrder = customerOrdersList.value[0];
+        orderId.value = initialOrder.id;
+      }
+      const order = ref(initialOrder || null);
+      const isItemsExpanded = ref(true);
+
+      const currentStatus = computed(() => {
+        return (order.value && order.value.delivery_status) || 'new';
+      });
+
+      const statusLabel = computed(() => {
+        if (!order.value) return 'ไม่มีออเดอร์';
+        switch (currentStatus.value) {
+          case 'new': return 'รอร้านรับออเดอร์';
+          case 'cooking': return 'กำลังปรุงอาหาร';
+          case 'delivering': return 'กำลังนำส่ง';
+          case 'completed': return 'จัดส่งสำเร็จ';
+          default: return 'รับออเดอร์แล้ว';
+        }
+      });
+
+      const stepIndex = computed(() => {
+        if (!order.value) return 0;
+        switch (currentStatus.value) {
+          case 'new': return 1;
+          case 'cooking': return 2;
+          case 'delivering': return 3;
+          case 'completed': return 4;
+          default: return 1;
+        }
+      });
+
+      const progressPercent = computed(() => {
+        switch (stepIndex.value) {
+          case 1: return 10;
+          case 2: return 40;
+          case 3: return 70;
+          case 4: return 100;
+          default: return 0;
+        }
+      });
+
+      // --------------------------------------------------
+      // LEAFLET.JS MAP & MARKER MANAGEMENT
+      // --------------------------------------------------
+      let leafletMap = null;
+      let storeMarker = null;
+      let customerMarker = null;
+      let riderMarker = null;
+      let routeLine = null;
+
+      const initMap = () => {
+        if (!order.value) return;
+        if (typeof L === 'undefined') {
+          console.warn('Leaflet map library is not loaded');
+          return;
+        }
+        const mapContainer = document.getElementById('map');
+        if (!mapContainer) {
+          return;
+        }
+        if (leafletMap) return;
+
+        try {
+          const storeLat = (store.value && store.value.store_lat) || 13.7563;
+          const storeLng = (store.value && store.value.store_lng) || 100.5018;
+          const custLat = (order.value && order.value.customer_lat) || (storeLat - 0.012);
+          const custLng = (order.value && order.value.customer_lng) || (storeLng + 0.018);
+
+          // Initial rider position: at store or slightly midway
+          const riderLat = (storeLat + custLat) / 2;
+          const riderLng = (storeLng + custLng) / 2;
+
+          leafletMap = L.map('map', { zoomControl: false }).setView([riderLat, riderLng], 14);
+
+          // 100% Free OpenStreetMap Tile Layer (No API Key Required)
+          L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          }).addTo(leafletMap);
+
+          // Custom HTML Icons
+          const storeIcon = L.divIcon({
+            className: 'custom-store-pin',
+            html: '<div style="background-color:#1E293B; color:#fff; width:34px; height:34px; border-radius:12px; display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 3px 6px rgba(0,0,0,0.3); font-size:14px;"><i class="fa-solid fa-store text-orange-400"></i></div>',
+            iconSize: [34, 34],
+            iconAnchor: [17, 17]
+          });
+
+          const customerIcon = L.divIcon({
+            className: 'custom-customer-pin',
+            html: '<div style="background-color:#E11D48; color:#fff; width:34px; height:34px; border-radius:12px; display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 3px 6px rgba(0,0,0,0.3); font-size:14px;"><i class="fa-solid fa-house"></i></div>',
+            iconSize: [34, 34],
+            iconAnchor: [17, 17]
+          });
+
+          const riderIcon = L.divIcon({
+            className: 'custom-rider-pin',
+            html: '<div style="position:relative;"><div class="pulse-ring"></div><div style="background-color:#10B981; color:#fff; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 4px 8px rgba(0,0,0,0.3); font-size:13px;"><i class="fa-solid fa-motorcycle"></i></div></div>',
+            iconSize: [32, 32],
+            iconAnchor: [16, 16]
+          });
+
+          storeMarker = L.marker([storeLat, storeLng], { icon: storeIcon }).addTo(leafletMap).bindPopup('<b>ร้านอาหาร</b>');
+          customerMarker = L.marker([custLat, custLng], { icon: customerIcon }).addTo(leafletMap).bindPopup('<b>บ้านลูกค้า</b>');
+          riderMarker = L.marker([riderLat, riderLng], { icon: riderIcon }).addTo(leafletMap).bindPopup('<b>พิกัดไรเดอร์สด</b>');
+
+          // Draw Route Line
+          routeLine = L.polyline([[storeLat, storeLng], [riderLat, riderLng], [custLat, custLng]], {
+            color: '#086687',
+            weight: 4,
+            opacity: 0.8,
+            dashArray: '8, 8'
+          }).addTo(leafletMap);
+
+          // Fit bounds to all pins
+          const bounds = L.latLngBounds([[storeLat, storeLng], [custLat, custLng], [riderLat, riderLng]]);
+          leafletMap.fitBounds(bounds, { padding: [40, 40] });
+
+          setTimeout(() => {
+            if (leafletMap) {
+              leafletMap.invalidateSize();
+            }
+          }, 300);
+        } catch (e) {
+          console.warn('Leaflet map init warning:', e);
+        }
+      };
+
+      const updateRiderPosition = (lat, lng) => {
+        if (!riderMarker || !leafletMap) return;
+        riderMarker.setLatLng([lat, lng]);
+        
+        // Update polyline from rider to customer
+        if (customerMarker && routeLine) {
+          const custLatLng = customerMarker.getLatLng();
+          routeLine.setLatLngs([[lat, lng], [custLatLng.lat, custLatLng.lng]]);
+        }
+      };
+
+      // --------------------------------------------------
+      // REALTIME CLOUD SYNC & ORDER DATA FETCH
+      // --------------------------------------------------
+      const fetchOrderData = async () => {
+        const sb = window.getWposSupabaseClient ? window.getWposSupabaseClient() : null;
+        if (sb && orderId.value) {
+          try {
+            const { data, error } = await sb
+              .from('delivery_orders')
+              .select('*')
+              .eq('id', orderId.value)
+              .maybeSingle();
+
+            if (!error && data) {
+              order.value = data;
+              if (!myOrderIds.includes(data.id)) {
+                myOrderIds.unshift(data.id);
+                localStorage.setItem('wpos_customer_order_ids', JSON.stringify(myOrderIds));
+              }
+              initMap();
+            }
+
+            const { data: storeData } = await sb
+              .from('store_profile')
+              .select('*')
+              .eq('id', 'default')
+              .maybeSingle();
+
+            if (storeData) {
+              store.value = { ...store.value, ...storeData };
+            }
+          } catch (e) {
+            console.warn('Track order fetch error:', e);
+          }
+        }
+      };
+
+      onMounted(() => {
+        fetchOrderData();
+
+        setTimeout(() => {
+          initMap();
+        }, 150);
+
+        // 1. BroadcastChannel (Cross-tab/Window Sync)
+        try {
+          const channel = new BroadcastChannel('wpos_delivery_channel');
+          channel.onmessage = (e) => {
+            const data = e.data;
+            if (data.type === 'DELIVERY_STATUS_UPDATED' && data.orderId === orderId.value) {
+              if (order.value) {
+                order.value.delivery_status = data.newStatus;
+                if (data.rider_name) order.value.rider_name = data.rider_name;
+                if (data.rider_phone) order.value.rider_phone = data.rider_phone;
+              }
+            } else if (data.type === 'RIDER_GPS_UPDATE' && (data.orderId === orderId.value || !data.orderId)) {
+              updateRiderPosition(data.lat, data.lng);
+            }
+          };
+        } catch (e) {}
+
+        // 2. Supabase Realtime (Cross-Device Internet Sync)
+        const sb = window.getWposSupabaseClient ? window.getWposSupabaseClient() : null;
+        if (sb && orderId.value) {
+          try {
+            sb.channel('track-' + orderId.value)
+              .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'delivery_orders',
+                filter: `id=eq.${orderId.value}`
+              }, (payload) => {
+                const updated = payload.new;
+                if (updated && order.value) {
+                  Object.assign(order.value, updated);
+                }
+              })
+              .on('broadcast', { event: 'gps_update' }, ({ payload }) => {
+                if (payload && payload.lat && payload.lng) {
+                  updateRiderPosition(payload.lat, payload.lng);
+                }
+              })
+              .on('broadcast', { event: 'status_update' }, ({ payload }) => {
+                if (payload && order.value) {
+                  if (payload.newStatus) order.value.delivery_status = payload.newStatus;
+                  if (payload.rider_name) order.value.rider_name = payload.rider_name;
+                  if (payload.rider_phone) order.value.rider_phone = payload.rider_phone;
+                }
+              })
+              .subscribe();
+
+            sb.channel('wpos_delivery_realtime')
+              .on('broadcast', { event: 'status_update' }, ({ payload }) => {
+                if (payload && payload.orderId === orderId.value && order.value) {
+                  if (payload.newStatus) order.value.delivery_status = payload.newStatus;
+                  if (payload.rider_name) order.value.rider_name = payload.rider_name;
+                  if (payload.rider_phone) order.value.rider_phone = payload.rider_phone;
+                }
+              })
+              .subscribe();
+          } catch (e) {
+            console.warn('Supabase Realtime not subscribed in track.html:', e);
+          }
+        }
+      });
+
+      // --------------------------------------------------
+      // DEMO SIMULATION (FOR USER TESTING)
+      // --------------------------------------------------
+      const isSimulatingRider = ref(false);
+      const startGpsSimulation = () => {
+        if (!order.value || isSimulatingRider.value) return;
+        isSimulatingRider.value = true;
+        order.value.delivery_status = 'delivering';
+
+        const storeLat = (store.value && store.value.store_lat) || 13.7563;
+        const storeLng = (store.value && store.value.store_lng) || 100.5018;
+        const custLat = (order.value && order.value.customer_lat) || (storeLat - 0.012);
+        const custLng = (order.value && order.value.customer_lng) || (storeLng + 0.018);
+
+        let step = 0;
+        const totalSteps = 20;
+
+        const interval = setInterval(() => {
+          step++;
+          const progress = step / totalSteps;
+          const curLat = storeLat + (custLat - storeLat) * progress;
+          const curLng = storeLng + (custLng - storeLng) * progress;
+
+          updateRiderPosition(curLat, curLng);
+
+          if (step >= totalSteps) {
+            clearInterval(interval);
+            isSimulatingRider.value = false;
+            if (order.value) order.value.delivery_status = 'completed';
+          }
+        }, 800);
+      };
+
+      const simulateStatusNext = () => {
+        if (!order.value) return;
+        const statuses = ['new', 'cooking', 'delivering', 'completed'];
+        const curIdx = statuses.indexOf(order.value.delivery_status || 'new');
+        const nextIdx = (curIdx + 1) % statuses.length;
+        order.value.delivery_status = statuses[nextIdx];
+        if (order.value.delivery_status === 'delivering' && !isSimulatingRider.value) {
+          startGpsSimulation();
+        }
+      };
+
+      const selectOrder = (newId) => {
+        orderId.value = newId;
+        const found = deliveryOrders.value.find(o => o.id === newId);
+        if (found) {
+          order.value = found;
+          localStorage.setItem('wpos_active_order_id', newId);
+          try {
+            window.history.replaceState({}, '', '?orderId=' + newId);
+          } catch(e) {}
+          setTimeout(() => {
+            initMap();
+            if (leafletMap && customerMarker && order.value && order.value.customer_lat && order.value.customer_lng) {
+              customerMarker.setLatLng([order.value.customer_lat, order.value.customer_lng]);
+              leafletMap.panTo([order.value.customer_lat, order.value.customer_lng]);
+            }
+          }, 100);
+        } else {
+          localStorage.setItem('wpos_active_order_id', newId);
+          try {
+            window.history.replaceState({}, '', '?orderId=' + newId);
+          } catch(e) {}
+          fetchOrderData();
+        }
+        isSwitchOrderModalOpen.value = false;
+      };
+
+      return {
+        orderId,
+        order,
+        store,
+        currentStatus,
+        statusLabel,
+        stepIndex,
+        progressPercent,
+        isItemsExpanded,
+        isSimulatingRider,
+        startGpsSimulation,
+        simulateStatusNext,
+        isSwitchOrderModalOpen,
+        customerOrdersList,
+        selectOrder
+      };
+    }
+  });
+
+  try {
+    app.mount('#app');
+  } catch (err) {
+    console.error('Mount error:', err);
+    const appEl = document.getElementById('app');
+    if (appEl) {
+      appEl.innerHTML = `
+        <div style="padding: 24px; text-align: center; color: #334155; font-family: sans-serif;">
+          <h2 style="font-size: 18px; font-weight: bold; margin-bottom: 8px;">เกิดข้อผิดพลาดในการแสดงผล</h2>
+          <p style="font-size: 13px; color: #64748b; margin-bottom: 16px;">${err.message || 'กรุณาลองรีเฟรชหน้าใหม่อีกครั้ง'}</p>
+          <a href="order.html" style="display:inline-block; padding: 8px 16px; background:#086687; color:white; border-radius:8px; text-decoration:none; font-size:13px;">กลับหน้ารายการอาหาร</a>
+        </div>
+      `;
+    }
+  }
+</script>
+
+</body>
+</html>
