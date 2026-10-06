@@ -737,7 +737,10 @@
         store_lat: 13.7563,
         store_lng: 100.5018
       };
-      const store = ref(safeGetJSON('wpos_store', defaultStore));
+      const configStore = (window.WPOS_CONFIG && window.WPOS_CONFIG.DEFAULT_STORE) ? window.WPOS_CONFIG.DEFAULT_STORE : {};
+      const mergedDefaultStore = { ...defaultStore, ...configStore };
+      const loadedStore = safeGetJSON('wpos_store', null);
+      const store = ref(loadedStore ? { ...mergedDefaultStore, ...loadedStore } : mergedDefaultStore);
       if (store.value.base_delivery_km === undefined) store.value.base_delivery_km = 2.0;
       if (store.value.base_delivery_fee === undefined) store.value.base_delivery_fee = 20.0;
       if (store.value.extra_delivery_fee_per_km === undefined) store.value.extra_delivery_fee_per_km = 10.0;
@@ -748,7 +751,12 @@
       if (store.value.store_lng === undefined) store.value.store_lng = 100.5018;
 
       // 2. Menu Items & Categories
-      const categories = ref(safeGetJSON('wpos_categories', []));
+      const configCategories = (window.WPOS_CONFIG && Array.isArray(window.WPOS_CONFIG.DEFAULT_CATEGORIES)) ? window.WPOS_CONFIG.DEFAULT_CATEGORIES : [];
+      let loadedCategories = safeGetJSON('wpos_categories', null);
+      if (!loadedCategories || !Array.isArray(loadedCategories) || loadedCategories.length === 0) {
+        loadedCategories = configCategories;
+      }
+      const categories = ref(loadedCategories);
 
       const demoItemNames = [
         'ผัดกะเพราเนื้อโคขุนพรีเมียม ไข่ดาวกรอบ',
@@ -762,24 +770,32 @@
         'เกี๊ยวกรอบทอด กรุบกรอบ'
       ];
       const demoItemIds = new Set(['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9']);
-      let loadedMenuItems = safeGetJSON('wpos_menu_items', []);
-      if (Array.isArray(loadedMenuItems)) {
+      const configMenuItems = (window.WPOS_CONFIG && Array.isArray(window.WPOS_CONFIG.DEFAULT_MENU_ITEMS)) ? window.WPOS_CONFIG.DEFAULT_MENU_ITEMS : [];
+      let loadedMenuItems = safeGetJSON('wpos_menu_items', null);
+      if (Array.isArray(loadedMenuItems) && loadedMenuItems.length > 0) {
         loadedMenuItems = loadedMenuItems.filter(item => {
           if (!item) return false;
           if (item.id && demoItemIds.has(item.id)) return false;
           if (item.name && demoItemNames.some(dName => item.name.trim() === dName.trim())) return false;
           return true;
         });
+        if (loadedMenuItems.length === 0 && configMenuItems.length > 0) {
+          loadedMenuItems = configMenuItems;
+        }
       } else {
-        loadedMenuItems = [];
+        loadedMenuItems = configMenuItems;
       }
       const menuItems = ref(loadedMenuItems);
 
+      const configOptionGroups = (window.WPOS_CONFIG && Array.isArray(window.WPOS_CONFIG.DEFAULT_OPTION_GROUPS)) ? window.WPOS_CONFIG.DEFAULT_OPTION_GROUPS : [];
       const defaultOptionGroups = [];
 
       const loadedStoredGroups = safeGetJSON('wpos_modifier_groups', safeGetJSON('wpos_option_groups', null));
-      const normalizedOptionGroups = (loadedStoredGroups && Array.isArray(loadedStoredGroups))
-        ? loadedStoredGroups.map(g => ({
+      const groupsToNormalize = (loadedStoredGroups && Array.isArray(loadedStoredGroups) && loadedStoredGroups.length > 0)
+        ? loadedStoredGroups
+        : configOptionGroups;
+      const normalizedOptionGroups = (groupsToNormalize && Array.isArray(groupsToNormalize))
+        ? groupsToNormalize.map(g => ({
             id: g.id,
             name: g.name,
             is_multiple_choice: g.is_multiple_choice !== undefined ? g.is_multiple_choice : (g.type === 'multiple'),

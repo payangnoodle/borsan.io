@@ -1741,6 +1741,14 @@
                 <p class="text-xs text-slate-500">ปรับปรุงราคาอาหาร รูปภาพ และเพิ่มเมนูใหม่ในระบบ</p>
               </div>
               <div class="flex items-center space-x-2">
+                <button @click="exportMenuData" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-1.5 px-3 rounded-lg text-xs transition flex items-center space-x-1 shadow-sm cursor-pointer" title="คัดลอกข้อมูลร้านค้าและเมนูทั้งหมด">
+                  <i class="fa-solid fa-file-export text-slate-500"></i>
+                  <span>ส่งออกข้อมูล (JSON)</span>
+                </button>
+                <button @click="importMenuData" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-1.5 px-3 rounded-lg text-xs transition flex items-center space-x-1 shadow-sm cursor-pointer" title="นำเข้าข้อมูลเมนูจาก JSON">
+                  <i class="fa-solid fa-file-import text-slate-500"></i>
+                  <span>นำเข้าข้อมูล</span>
+                </button>
                 <button v-if="menuItems.length > 0" @click="clearAllMenuItems" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold py-1.5 px-3 rounded-lg text-xs transition flex items-center space-x-1 cursor-pointer">
                   <i class="fa-solid fa-trash-can"></i>
                   <span>ลบเมนูทั้งหมด</span>
@@ -2526,6 +2534,9 @@
               <button @click="saveSupabaseConfig" class="bg-brand-active hover:bg-sky-800 text-white font-bold py-2 px-4 rounded-lg text-xs transition">
                 บันทึกการตั้งค่าและเชื่อมต่อ Supabase
               </button>
+              <p class="text-[11px] text-slate-500 mt-1">
+                💡 <strong>คำแนะนำ:</strong> การกดบันทึกตรงนี้จะจำค่าเฉพาะบนเครื่องนี้ หากต้องการให้อุปกรณ์ลูกค้าและไรเดอร์ทุกเครื่องเชื่อมต่อได้ด้วย ให้ใส่ URL และ Anon Key ในไฟล์ <code class="bg-slate-200 px-1 py-0.5 rounded text-slate-700 font-mono">config.js</code> แล้วนำขึ้น GitHub ครับ
+              </p>
             </div>
 
             <!-- SQL Schema Script -->
@@ -5585,11 +5596,14 @@
       // --------------------------------------------------
       // 6. CATEGORIES & MENU ITEMS STATE
       // --------------------------------------------------
-      const defaultCategories = [];
+      const configCategories = (window.WPOS_CONFIG && Array.isArray(window.WPOS_CONFIG.DEFAULT_CATEGORIES)) ? window.WPOS_CONFIG.DEFAULT_CATEGORIES : [];
+      const defaultCategories = configCategories;
       let rawCategories = safeGetJSON('wpos_categories', defaultCategories);
       if (Array.isArray(rawCategories) && rawCategories.some(c => c && (c.id === 'cat_recommend' || c.id === 'cat_noodle' || c.id === 'cat_main'))) {
         rawCategories = defaultCategories;
         localStorage.setItem('wpos_categories', JSON.stringify(rawCategories));
+      } else if (!rawCategories || !Array.isArray(rawCategories) || rawCategories.length === 0) {
+        rawCategories = defaultCategories;
       }
       const categories = ref(rawCategories);
       const activeCategory = ref('all');
@@ -5631,8 +5645,10 @@
           }
         }
       };
-      const defaultModifierGroups = [];
-      const defaultMenuItems = [];
+      const configModifierGroups = (window.WPOS_CONFIG && Array.isArray(window.WPOS_CONFIG.DEFAULT_OPTION_GROUPS)) ? window.WPOS_CONFIG.DEFAULT_OPTION_GROUPS : [];
+      const defaultModifierGroups = configModifierGroups;
+      const configMenuItems = (window.WPOS_CONFIG && Array.isArray(window.WPOS_CONFIG.DEFAULT_MENU_ITEMS)) ? window.WPOS_CONFIG.DEFAULT_MENU_ITEMS : [];
+      const defaultMenuItems = configMenuItems;
       const demoItemIds = new Set(['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9']);
       const demoItemNames = [
         'ผัดกะเพราเนื้อโคขุนพรีเมียม ไข่ดาวกรอบ',
@@ -5657,6 +5673,8 @@
       if (loadedGroups === null || !Array.isArray(loadedGroups) || loadedGroups.some(g => g && (g.id === 'grp_noodle' || g.id === 'grp_spicy' || g.id === 'grp_sweetness' || g.id === 'grp_egg' || g.id === 'grp_toppings'))) {
         loadedGroups = defaultModifierGroups;
         localStorage.setItem('wpos_modifier_groups', JSON.stringify(loadedGroups));
+      } else if (loadedGroups.length === 0 && configModifierGroups.length > 0) {
+        loadedGroups = configModifierGroups;
       }
       const modifierGroups = ref(loadedGroups);
       // Initialize Menu Items with localStorage & Filter Out Demo Items
@@ -5665,7 +5683,7 @@
         const storedMenu = localStorage.getItem('wpos_menu_items');
         loadedMenu = storedMenu !== null ? JSON.parse(storedMenu) : null;
       } catch (e) { loadedMenu = null; }
-      if (Array.isArray(loadedMenu)) {
+      if (Array.isArray(loadedMenu) && loadedMenu.length > 0) {
         // Filter out all demo mock items!
         loadedMenu = loadedMenu.filter(item => {
           if (!item) return false;
@@ -5673,8 +5691,11 @@
           if (item.name && demoItemNames.some(dName => item.name.trim() === dName.trim())) return false;
           return true;
         });
+        if (loadedMenu.length === 0 && configMenuItems.length > 0) {
+          loadedMenu = configMenuItems;
+        }
       } else {
-        loadedMenu = [];
+        loadedMenu = configMenuItems;
       }
       const menuItems = ref(loadedMenu);
       const saveMenuItems = async () => {
@@ -7255,6 +7276,62 @@
           alert('ลบรายการอาหารทั้งหมดเรียบร้อยแล้ว');
         }
       };
+      const exportMenuData = () => {
+        const payload = {
+          store: {
+            name: store.value.name,
+            branch_name: store.value.branch_name,
+            phone: store.value.phone,
+            address: store.value.address,
+            promptpay_number: store.value.promptpay_number,
+            store_lat: store.value.store_lat,
+            store_lng: store.value.store_lng,
+            base_delivery_km: store.value.base_delivery_km,
+            base_delivery_fee: store.value.base_delivery_fee,
+            extra_delivery_fee_per_km: store.value.extra_delivery_fee_per_km,
+            max_delivery_km: store.value.max_delivery_km
+          },
+          categories: categories.value,
+          menuItems: menuItems.value,
+          modifierGroups: modifierGroups.value
+        };
+        const jsonStr = JSON.stringify(payload, null, 2);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(jsonStr).then(() => {
+            alert('คัดลอกข้อมูลร้านค้าและเมนูทั้งหมดลงคลิปบอร์ดแล้ว! สามารถนำข้อความนี้ส่งให้ผู้ช่วย AI หรือสำรองเก็บไว้ได้ทันทีค่ะ');
+          }).catch(() => {
+            prompt('คัดลอกข้อมูล JSON ด้านล่างนี้ได้เลยค่ะ:', jsonStr);
+          });
+        } else {
+          prompt('คัดลอกข้อมูล JSON ด้านล่างนี้ได้เลยค่ะ:', jsonStr);
+        }
+      };
+      const importMenuData = () => {
+        const input = prompt('วางข้อความข้อมูลร้านและเมนู (JSON) ที่ต้องการนำเข้า:');
+        if (!input || !input.trim()) return;
+        try {
+          const data = JSON.parse(input);
+          if (data.store && typeof data.store === 'object') {
+            store.value = { ...store.value, ...data.store };
+            saveStoreSettings(true);
+          }
+          if (Array.isArray(data.categories) && data.categories.length > 0) {
+            categories.value = data.categories;
+            saveCategories();
+          }
+          if (Array.isArray(data.menuItems) && data.menuItems.length > 0) {
+            menuItems.value = data.menuItems;
+            saveMenuItems();
+          }
+          if (Array.isArray(data.modifierGroups) && data.modifierGroups.length > 0) {
+            modifierGroups.value = data.modifierGroups;
+            saveModifierGroups();
+          }
+          alert('นำเข้าข้อมูลร้านค้าและเมนูอาหารเรียบร้อยแล้ว!');
+        } catch(e) {
+          alert('รูปแบบข้อมูลไม่ถูกต้อง กรุณาตรวจสอบข้อความ JSON อีกครั้งค่ะ');
+        }
+      };
       // Staff List
       const defaultStaff = [
         { id: 'st_1', name: 'เจ้าของร้าน (ผู้จัดการ)', role: 'ผู้จัดการร้าน', pin: '1234' }
@@ -8130,13 +8207,17 @@
       });
       const isSupabaseConnected = ref(false);
       const saveSupabaseConfig = () => {
-        localStorage.setItem('wpos_supabase_url', supabaseConfig.value.url);
-        localStorage.setItem('wpos_supabase_anon_key', supabaseConfig.value.anonKey);
-        if (supabaseConfig.value.url && supabaseConfig.value.anonKey && window.supabase) {
+        let cleanUrl = (supabaseConfig.value.url || '').trim().replace(/\/rest\/v1\/?$/i, '').replace(/\/+$/, '');
+        let cleanKey = (supabaseConfig.value.anonKey || '').trim();
+        supabaseConfig.value.url = cleanUrl;
+        supabaseConfig.value.anonKey = cleanKey;
+        localStorage.setItem('wpos_supabase_url', cleanUrl);
+        localStorage.setItem('wpos_supabase_anon_key', cleanKey);
+        if (cleanUrl && cleanKey && window.supabase) {
           try {
-            window.supabase.createClient(supabaseConfig.value.url, supabaseConfig.value.anonKey);
+            window.supabase.createClient(cleanUrl, cleanKey);
             isSupabaseConnected.value = true;
-            alert('เชื่อมต่อ Supabase สำเร็จ!');
+            alert('เชื่อมต่อ Supabase สำเร็จสำหรับเครื่องนี้แล้ว!\n(หมายเหตุ: หากต้องการให้อุปกรณ์ลูกค้าทุกเครื่องเชื่อมต่อได้ด้วย อย่าลืมใส่ค่าใน config.js แล้วนำขึ้น GitHub นะคะ)');
           } catch (e) {
             alert('ไม่สามารถเชื่อมต่อ Supabase ได้ กรุณาตรวจสอบ URL และ Anon Key');
           }
@@ -8415,6 +8496,75 @@ END $$;`;
             }
           };
           catchUpDeliveryOrders();
+
+          // B. Cloud sync for menu items, categories, and store profile
+          const syncCloudMenu = async () => {
+            try {
+              // 1. Sync Categories
+              if (categories.value.length === 0) {
+                const { data: catData } = await sbClient.from('categories').select('*').order('sort_order', { ascending: true });
+                if (catData && catData.length > 0) {
+                  categories.value = catData;
+                  localStorage.setItem('wpos_categories', JSON.stringify(catData));
+                }
+              } else {
+                saveCategories();
+              }
+
+              // 2. Sync Modifier Groups
+              if (modifierGroups.value.length === 0) {
+                const { data: optData } = await sbClient.from('option_groups').select('*');
+                if (optData && optData.length > 0) {
+                  modifierGroups.value = optData.map(g => ({
+                    id: g.id,
+                    name: g.name,
+                    type: g.is_multiple_choice ? 'multiple' : 'single',
+                    options: g.options || []
+                  }));
+                  localStorage.setItem('wpos_modifier_groups', JSON.stringify(modifierGroups.value));
+                }
+              } else {
+                saveModifierGroups();
+              }
+
+              // 3. Sync Menu Items
+              if (menuItems.value.length === 0) {
+                const { data: mData } = await sbClient.from('menu_items').select('*');
+                if (mData && mData.length > 0) {
+                  menuItems.value = mData.map(m => ({
+                    id: m.id,
+                    name: m.name,
+                    price: m.price,
+                    delivery_price: m.delivery_price || m.price,
+                    category_id: m.category_id,
+                    image_url: m.image_url || '',
+                    is_available: m.is_available !== false,
+                    is_delivery_available: m.is_delivery_available !== false,
+                    stock_enabled: m.stock_enabled === true,
+                    daily_stock: m.daily_stock || 0,
+                    optionGroupIds: m.option_group_ids || []
+                  }));
+                  localStorage.setItem('wpos_menu_items', JSON.stringify(menuItems.value));
+                }
+              } else {
+                saveMenuItems();
+              }
+
+              // 4. Store Profile
+              if (!store.value.name || store.value.name === 'ชื่อร้านอาหาร') {
+                const { data: stData } = await sbClient.from('store_profile').select('*').eq('id', 'default').maybeSingle();
+                if (stData && stData.name) {
+                  store.value = { ...store.value, ...stData };
+                  localStorage.setItem('wpos_store', JSON.stringify(store.value));
+                }
+              } else {
+                saveStoreSettings(true);
+              }
+            } catch (err) {
+              console.warn('Sync cloud menu failed:', err);
+            }
+          };
+          syncCloudMenu();
 
           // B. Realtime Subscription on delivery_orders
           try {
@@ -8736,6 +8886,8 @@ END $$;`;
         confirmAddNewMenu,
         deleteMenuItem,
         clearAllMenuItems,
+        exportMenuData,
+        importMenuData,
         activeItemOptionGroups,
         selectedModifierOptions,
         selectSingleModifierOption,
