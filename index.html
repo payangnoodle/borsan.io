@@ -189,8 +189,11 @@
       <div class="leading-tight truncate cursor-pointer" @click="isMobileSidebarOpen = true">
         <div class="font-bold text-sm truncate flex items-center space-x-1.5">
           <span>{{ getTabTitle(currentTab) }}</span>
-          <span v-if="currentTab === 'ordering' && orderMode === 'dine_in' && currentOrderTable" class="text-[10px] bg-brand-active px-1.5 py-0.2 rounded font-normal font-mono">
-            {{ currentOrderTable.table_no }}
+          <span v-if="currentTab === 'ordering' && orderMode === 'dine_in'"
+            @click="openSelectTableModal()"
+            class="text-[10px] px-1.5 py-0.5 rounded font-mono font-bold cursor-pointer transition active:scale-95"
+            :class="currentOrderTable ? 'bg-brand-active text-white' : 'bg-amber-400 text-slate-900 animate-pulse'">
+            {{ currentOrderTable ? 'โต๊ะ ' + currentOrderTable.table_no : '+ เลือกโต๊ะ' }}
           </span>
         </div>
         <p class="text-[10px] text-slate-400 truncate">{{ store.name || 'ระบบจัดการร้านอาหาร' }}</p>
@@ -749,16 +752,25 @@
           
           <!-- Mode & Search Bar -->
           <div class="p-3 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0 text-xs">
-            <!-- Dine-in vs Takeaway Toggle -->
-            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5">
-              <button @click="orderMode = 'dine_in'" :class="orderMode === 'dine_in' ? 'bg-brand-active text-white font-bold' : 'text-slate-600'" class="px-3 py-1 rounded-md transition flex items-center space-x-1">
-                <i class="fa-solid fa-utensils"></i>
-                <span>ทานที่ร้าน</span>
-                <span v-if="currentOrderTable" class="ml-1 bg-white/20 px-1 rounded text-[10px] font-mono">({{ currentOrderTable.table_no }})</span>
-              </button>
-              <button @click="orderMode = 'takeaway'" :class="orderMode === 'takeaway' ? 'bg-brand-accent text-white font-bold' : 'text-slate-600'" class="px-3 py-1 rounded-md transition flex items-center space-x-1">
-                <i class="fa-solid fa-bag-shopping"></i>
-                <span>รับกลับบ้าน (คิว {{ takeawayQueueNo }})</span>
+            <!-- Dine-in vs Takeaway Toggle & Table Selector -->
+            <div class="flex items-center space-x-2">
+              <div class="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5">
+                <button @click="orderMode = 'dine_in'" :class="orderMode === 'dine_in' ? 'bg-brand-active text-white font-bold' : 'text-slate-600'" class="px-3 py-1 rounded-md transition flex items-center space-x-1 cursor-pointer">
+                  <i class="fa-solid fa-utensils"></i>
+                  <span>ทานที่ร้าน</span>
+                </button>
+                <button @click="orderMode = 'takeaway'; currentOrderTable = null;" :class="orderMode === 'takeaway' ? 'bg-brand-accent text-white font-bold' : 'text-slate-600'" class="px-3 py-1 rounded-md transition flex items-center space-x-1 cursor-pointer">
+                  <i class="fa-solid fa-bag-shopping"></i>
+                  <span>รับกลับบ้าน (คิว {{ takeawayQueueNo }})</span>
+                </button>
+              </div>
+
+              <!-- Interactive Table Button when Dine-in is active -->
+              <button v-if="orderMode === 'dine_in'" @click="openSelectTableModal()"
+                class="px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-xs active:scale-95"
+                :class="currentOrderTable ? 'bg-sky-50 text-sky-800 border border-sky-300 hover:bg-sky-100' : 'bg-amber-100 text-amber-900 border border-amber-400 hover:bg-amber-200 animate-pulse'">
+                <i class="fa-solid fa-table-cells text-xs" :class="currentOrderTable ? 'text-brand-active' : 'text-amber-600'"></i>
+                <span>{{ currentOrderTable ? 'โต๊ะ ' + currentOrderTable.table_no + ' (เปลี่ยนโต๊ะ)' : '+ กดเลือกโต๊ะ' }}</span>
               </button>
             </div>
 
@@ -847,8 +859,11 @@
               </span>
             </div>
             <div>
-              <div class="text-[11px] font-medium text-slate-300">
-                {{ orderMode === 'dine_in' ? (currentOrderTable ? 'โต๊ะ ' + currentOrderTable.table_no : 'โต๊ะ (ยังไม่เลือก)') : 'รับกลับบ้าน (คิว ' + takeawayQueueNo + ')' }}
+              <div class="text-[11px] font-medium text-slate-300 flex items-center space-x-1">
+                <span>{{ orderMode === 'dine_in' ? (currentOrderTable ? 'โต๊ะ ' + currentOrderTable.table_no : 'โต๊ะ (ยังไม่เลือก)') : 'รับกลับบ้าน (คิว ' + takeawayQueueNo + ')' }}</span>
+                <span v-if="orderMode === 'dine_in' && !currentOrderTable" class="text-amber-400 font-bold underline text-[10px] ml-1">
+                  (แตะเลือกโต๊ะ)
+                </span>
               </div>
               <div class="text-base font-extrabold font-mono text-white">฿{{ cartNetAmount.toLocaleString() }}</div>
             </div>
@@ -870,8 +885,18 @@
           <div class="p-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
             <div class="flex items-center space-x-2">
               <span class="w-2.5 h-2.5 rounded-full" :class="orderMode === 'dine_in' ? 'bg-brand-active' : 'bg-brand-accent'"></span>
-              <span class="font-bold text-slate-800 text-xs">
-                {{ orderMode === 'dine_in' ? (currentOrderTable ? 'โต๊ะ ' + currentOrderTable.table_no : 'โต๊ะ (ยังไม่เลือก)') : 'รับกลับบ้าน (คิว ' + takeawayQueueNo + ')' }}
+              <div v-if="orderMode === 'dine_in'" class="flex items-center space-x-1.5">
+                <span class="font-bold text-slate-800 text-xs">
+                  {{ currentOrderTable ? 'โต๊ะ ' + currentOrderTable.table_no : 'โต๊ะ (ยังไม่เลือก)' }}
+                </span>
+                <button @click="openSelectTableModal()" class="text-[10px] px-2 py-0.5 rounded font-bold transition flex items-center space-x-1 cursor-pointer"
+                  :class="currentOrderTable ? 'text-brand-active hover:bg-sky-100 bg-sky-50 border border-sky-200' : 'text-amber-800 hover:bg-amber-200 bg-amber-100 border border-amber-300 animate-pulse'">
+                  <i class="fa-solid fa-table-cells text-[9px]"></i>
+                  <span>{{ currentOrderTable ? 'เปลี่ยนโต๊ะ' : 'เลือกโต๊ะ' }}</span>
+                </button>
+              </div>
+              <span v-else class="font-bold text-slate-800 text-xs">
+                รับกลับบ้าน (คิว {{ takeawayQueueNo }})
               </span>
             </div>
             <div class="flex items-center space-x-2">
@@ -1027,6 +1052,14 @@
                 </span>
               </div>
 
+              <!-- Desktop Notification Prompt Button if not enabled -->
+              <button v-if="notificationPermissionState !== 'granted'" @click="requestNotificationPermission"
+                class="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 px-3 py-1.5 rounded-lg font-bold text-xs shadow-xs transition flex items-center cursor-pointer active:scale-95"
+                title="กดเปิดการแจ้งเตือนของ Windows / เบราว์เซอร์ เพื่อให้มีป๊อปอัปแจ้งเตือนแม้จะพับหน้าจอหรือสลับไปแอปอื่น">
+                <i class="fa-solid fa-bell text-amber-600 mr-1.5"></i>
+                <span>เปิดแจ้งเตือน Desktop</span>
+              </button>
+
               <!-- Quick Link: Open Customer Ordering Webpage -->
               <a href="order.html" target="_blank" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs shadow transition flex items-center">
                 <i class="fa-solid fa-mobile-screen mr-1.5"></i> หน้าสั่งอาหาร (ลูกค้า)
@@ -1091,6 +1124,11 @@
                 class="px-3 py-1.5 rounded-xl transition shrink-0">
                 จัดส่งสำเร็จ ({{ completedDeliveryCount }})
               </button>
+              <button v-if="cancelledDeliveryCount > 0" @click="deliveryFilterTab = 'cancelled'"
+                :class="deliveryFilterTab === 'cancelled' ? 'bg-slate-700 text-white font-bold shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                class="px-3 py-1.5 rounded-xl transition shrink-0">
+                ยกเลิก/ปฏิเสธแล้ว ({{ cancelledDeliveryCount }})
+              </button>
             </div>
 
             <!-- Right: Search Box, Date Filter & Actions -->
@@ -1146,10 +1184,22 @@
 
           <!-- Orders Grid Container -->
           <div class="flex-1 overflow-y-auto pt-3">
-            <div v-if="filteredDeliveryOrders.length === 0" class="text-center py-20 text-slate-400 space-y-2">
+            <div v-if="filteredDeliveryOrders.length === 0" class="text-center py-20 text-slate-400 space-y-3">
               <i class="fa-solid fa-motorcycle text-4xl text-slate-300"></i>
               <p v-if="deliverySearchQuery">ไม่พบรายการเดลิเวอรี่ที่ตรงกับคำค้นหา "{{ deliverySearchQuery }}"</p>
-              <p v-else-if="deliveryDateFilter === 'today' && deliveryFilterTab === 'completed'">ไม่มีออเดอร์เดลิเวอรี่ที่จัดส่งสำเร็จในวันนี้</p>
+              <div v-else-if="deliveryDateFilter === 'today'" class="space-y-2">
+                <p v-if="deliveryFilterTab === 'completed'">ไม่มีออเดอร์เดลิเวอรี่ที่จัดส่งสำเร็จในวันนี้</p>
+                <p v-else-if="deliveryFilterTab === 'cancelled'">ไม่มีออเดอร์เดลิเวอรี่ที่ยกเลิกในวันนี้</p>
+                <p v-else>ไม่มีรายการคำสั่งซื้อเดลิเวอรี่ในวันนี้</p>
+                <!-- Helpful one-click button if there are past orders -->
+                <div v-if="deliveryOrders.length > 0" class="pt-2">
+                  <button @click="deliveryDateFilter = 'all'" class="px-4 py-2 rounded-xl bg-brand-active hover:bg-sky-800 text-white font-bold text-xs shadow-md transition inline-flex items-center space-x-1.5 cursor-pointer active:scale-95">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                    <span>กดดูออเดอร์ทั้งหมดในประวัติ (มี {{ deliveryOrders.length }} ออเดอร์)</span>
+                  </button>
+                  <p class="text-[11px] text-slate-400 mt-1">💡 ออเดอร์ที่คุณเห็นในตัวเลขหัวข้อ เป็นออเดอร์จากวันก่อนหน้า จึงถูกซ่อนเมื่อเปิดตัวกรอง "วันนี้"</p>
+                </div>
+              </div>
               <p v-else>ไม่มีรายการคำสั่งซื้อในหมวดหมู่นี้</p>
               <button v-if="deliverySearchQuery" @click="deliverySearchQuery = ''" class="text-xs text-brand-active hover:underline font-bold mt-1">
                 ล้างคำค้นหา
@@ -1169,9 +1219,10 @@
                     'bg-rose-100 text-rose-700 border-rose-200 animate-pulse': order.delivery_status === 'new',
                     'bg-amber-100 text-amber-700 border-amber-200': order.delivery_status === 'cooking',
                     'bg-sky-100 text-sky-700 border-sky-200': order.delivery_status === 'delivering',
-                    'bg-emerald-100 text-emerald-700 border-emerald-200': order.delivery_status === 'completed'
+                    'bg-emerald-100 text-emerald-700 border-emerald-200': order.delivery_status === 'completed',
+                    'bg-slate-200 text-slate-700 border-slate-300': order.delivery_status === 'cancelled'
                   }" class="px-2.5 py-0.5 rounded-full font-bold text-[10px] border">
-                    {{ order.delivery_status === 'new' ? 'ออเดอร์ใหม่' : (order.delivery_status === 'cooking' ? 'กำลังปรุงอาหาร' : (order.delivery_status === 'delivering' ? 'ไรเดอร์กำลังนำส่ง' : 'จัดส่งสำเร็จ')) }}
+                    {{ order.delivery_status === 'new' ? 'ออเดอร์ใหม่' : (order.delivery_status === 'cooking' ? 'กำลังปรุงอาหาร' : (order.delivery_status === 'delivering' ? 'ไรเดอร์กำลังนำส่ง' : (order.delivery_status === 'cancelled' ? 'ยกเลิก/ปฏิเสธแล้ว' : 'จัดส่งสำเร็จ'))) }}
                   </span>
                 </div>
 
@@ -3612,7 +3663,23 @@
   <!-- ========================================================
        MODAL 1: PIN LOCK SCREEN KEYPAD
   ======================================================== -->
-  <div v-if="isPinLocked" class="fixed inset-0 bg-brand-darker/95 backdrop-blur-md z-50 flex items-center justify-center p-4 select-none animate-fadeIn">
+  <div v-if="isPinLocked" class="fixed inset-0 bg-brand-darker/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4 select-none animate-fadeIn">
+    <!-- URGENT DELIVERY ALERT BANNER ON PIN LOCK SCREEN -->
+    <div v-if="newDeliveryCount > 0" class="mb-3 max-w-xs w-full bg-gradient-to-r from-rose-600 to-red-500 text-white p-3.5 rounded-2xl shadow-2xl flex items-center justify-between animate-pulse">
+      <div class="flex items-center space-x-2.5">
+        <div class="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-base shrink-0">
+          <i class="fa-solid fa-bell animate-bounce"></i>
+        </div>
+        <div>
+          <div class="font-bold text-xs">🚨 มี {{ newDeliveryCount }} ออเดอร์เดลิเวอรี่ใหม่!</div>
+          <div class="text-[10px] text-rose-100">ใส่รหัส PIN เพื่อเปิดรับออเดอร์</div>
+        </div>
+      </div>
+      <button @click="stopDeliveryAlarm" class="bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer shrink-0">
+        หยุดเสียง
+      </button>
+    </div>
+
     <div class="bg-white rounded-3xl p-6 max-w-xs w-full shadow-2xl flex flex-col items-center space-y-4">
       <div class="w-14 h-14 rounded-2xl bg-orange-100 flex items-center justify-center text-brand-accent text-2xl shadow-inner">
         <i class="fa-solid fa-lock"></i>
@@ -3727,6 +3794,99 @@
         <button @click="confirmAddWithModifiers" class="flex-1 bg-brand-active hover:bg-sky-800 text-white font-bold py-3 rounded-xl transition shadow flex items-center justify-center space-x-1.5 cursor-pointer active:scale-95">
           <i class="fa-solid fa-plus"></i>
           <span>เพิ่มลงบิล (฿{{ calculateDynamicModifierTotal() }})</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       MODAL 2.5: SELECT / ASSIGN TABLE MODAL (เลือกโต๊ะสำหรับออเดอร์นี้)
+  ======================================================== -->
+  <div v-if="isSelectTableModalOpen" class="fixed inset-0 bg-black/75 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 select-none animate-fadeIn">
+    <div class="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl flex flex-col max-h-[92vh] text-xs">
+      
+      <!-- Header -->
+      <div class="p-4 bg-brand-dark text-white flex justify-between items-center shrink-0">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-8 h-8 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center text-sm font-bold border border-sky-400/30">
+            <i class="fa-solid fa-table-cells"></i>
+          </div>
+          <div>
+            <h4 class="font-bold text-sm sm:text-base">เลือกโต๊ะสำหรับออเดอร์นี้</h4>
+            <p class="text-[11px] text-slate-300">
+              <span v-if="cartItems.length > 0">เลือกโต๊ะเพื่อผูกกับรายการอาหารในบิล ({{ cartItems.length }} รายการ - ฿{{ cartNetAmount.toLocaleString() }})</span>
+              <span v-else>เลือกโต๊ะเพื่อเริ่มสั่งอาหารทานที่ร้าน</span>
+            </p>
+          </div>
+        </div>
+        <button @click="isSelectTableModalOpen = false" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Filter Buttons & Quick Info -->
+      <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2 shrink-0">
+        <div class="flex items-center space-x-1.5">
+          <button @click="selectTableFilter = 'all'" :class="selectTableFilter === 'all' ? 'bg-slate-800 text-white font-bold' : 'bg-white text-slate-600 border border-slate-200'" class="px-2.5 py-1 rounded-lg text-[11px] transition cursor-pointer">
+            ทั้งหมด ({{ tables.length }})
+          </button>
+          <button @click="selectTableFilter = 'available'" :class="selectTableFilter === 'available' ? 'bg-emerald-600 text-white font-bold' : 'bg-white text-slate-600 border border-slate-200'" class="px-2.5 py-1 rounded-lg text-[11px] transition cursor-pointer">
+            ว่าง ({{ availableTableCount }})
+          </button>
+          <button @click="selectTableFilter = 'occupied'" :class="selectTableFilter === 'occupied' ? 'bg-rose-600 text-white font-bold' : 'bg-white text-slate-600 border border-slate-200'" class="px-2.5 py-1 rounded-lg text-[11px] transition cursor-pointer">
+            กำลังทาน ({{ occupiedTableCount }})
+          </button>
+        </div>
+        <div v-if="currentOrderTable" class="text-[11px] text-slate-500 font-medium">
+          โต๊ะปัจจุบัน: <strong class="text-brand-active">โต๊ะ {{ currentOrderTable.table_no }}</strong>
+        </div>
+      </div>
+
+      <!-- Tables Grid Container -->
+      <div class="p-4 overflow-y-auto flex-1 scrollbar-thin">
+        <div class="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+          <div v-for="tbl in filteredSelectTables" :key="tbl.id"
+            @click="assignTableToCart(tbl)"
+            class="border-2 rounded-2xl p-3 flex flex-col justify-between h-24 sm:h-28 transition cursor-pointer hover:shadow-md active:scale-95 relative"
+            :class="[
+              (currentOrderTable && currentOrderTable.table_no === tbl.table_no) ? 'ring-2 ring-brand-active border-brand-active bg-sky-50/70' :
+              tbl.status === 'available' ? 'border-emerald-300 bg-emerald-50/40 hover:border-emerald-500' :
+              tbl.status === 'billing' ? 'border-amber-300 bg-amber-50/40 hover:border-amber-500' :
+              'border-rose-300 bg-rose-50/40 hover:border-rose-500'
+            ]">
+            
+            <div class="flex justify-between items-start">
+              <span class="text-base sm:text-lg font-extrabold font-mono text-slate-800">โต๊ะ {{ tbl.table_no }}</span>
+              <span :class="getTableBadgeClass(tbl)" class="text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                {{ getTableStatusLabel(tbl.status) }}
+              </span>
+            </div>
+
+            <div class="my-auto text-[11px]">
+              <div v-if="tbl.status === 'available'" class="text-emerald-700 font-medium">
+                {{ tbl.capacity }} ที่นั่ง
+              </div>
+              <div v-else class="text-slate-600 font-medium leading-tight">
+                <span class="text-rose-700 font-bold font-mono">฿{{ getTableOrderTotal(tbl).toLocaleString() }}</span>
+                <span class="block text-[10px] text-slate-400">({{ (tbl.items && tbl.items.length) || 0 }} จาน)</span>
+              </div>
+            </div>
+
+            <div v-if="currentOrderTable && currentOrderTable.table_no === tbl.table_no" class="absolute bottom-1 right-2 text-[10px] font-bold text-brand-active">
+              ✓ กำลังเลือก
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer Actions -->
+      <div class="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2 shrink-0">
+        <button @click="switchToTakeawayFromModal" class="px-3 py-2 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 font-bold text-xs transition flex items-center space-x-1 cursor-pointer">
+          <i class="fa-solid fa-bag-shopping"></i>
+          <span>เปลี่ยนเป็นรับกลับบ้าน</span>
+        </button>
+        <button @click="isSelectTableModalOpen = false" class="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs transition cursor-pointer">
+          ปิดหน้าต่าง
         </button>
       </div>
     </div>
@@ -3918,10 +4078,14 @@
 
       <!-- Preview Modal Footer -->
       <div class="p-3 bg-slate-50 flex space-x-2">
-        <button @click="isReceiptDetailModalOpen = false" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 rounded-xl transition">
+        <button @click="isReceiptDetailModalOpen = false" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-3 py-2 rounded-xl transition">
           ปิด
         </button>
-        <button @click="reprintReceipt(previewReceiptData); isReceiptDetailModalOpen = false;" class="flex-1 bg-brand-active hover:bg-sky-800 text-white font-bold py-2 rounded-xl transition shadow flex items-center justify-center space-x-1.5">
+        <button @click="openFullTaxInvoiceModal(previewReceiptData)" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-xl transition shadow flex items-center justify-center space-x-1.5 text-xs">
+          <i class="fa-solid fa-file-invoice"></i>
+          <span>ออกใบกำกับภาษีเต็มรูป</span>
+        </button>
+        <button @click="reprintReceipt(previewReceiptData); isReceiptDetailModalOpen = false;" class="flex-1 bg-brand-active hover:bg-sky-800 text-white font-bold py-2 rounded-xl transition shadow flex items-center justify-center space-x-1.5 text-xs">
           <i class="fa-solid fa-print"></i>
           <span>พิมพ์สลิปนี้</span>
         </button>
@@ -5696,15 +5860,32 @@
       const goToOrderingForTable = (t) => {
         const table = t || selectedTable.value;
         if (!table) return;
+
+        // If user already had items in cart before selecting this table:
+        const hasUnassignedCart = cartItems.value.length > 0 && (!currentOrderTable.value || currentOrderTable.value.id !== table.id);
+
+        if (hasUnassignedCart) {
+          const existingTableItems = (table.items || []).map(i => ({
+            name: i.name,
+            quantity: i.quantity,
+            price: i.price,
+            totalPrice: i.price,
+            modifiersText: i.modifiers || ''
+          }));
+          // Merge: existing table items + newly picked cart items
+          cartItems.value = [...existingTableItems, ...cartItems.value];
+        } else if (!currentOrderTable.value || currentOrderTable.value.id !== table.id) {
+          cartItems.value = (table.items || []).map(i => ({
+            name: i.name,
+            quantity: i.quantity,
+            price: i.price,
+            totalPrice: i.price,
+            modifiersText: i.modifiers || ''
+          }));
+        }
+
         currentOrderTable.value = table;
         orderMode.value = 'dine_in';
-        cartItems.value = (table.items || []).map(i => ({
-          name: i.name,
-          quantity: i.quantity,
-          price: i.price,
-          totalPrice: i.price,
-          modifiersText: i.modifiers || ''
-        }));
         isMobileTableDetailOpen.value = false;
         setTab('ordering');
       };
@@ -6163,6 +6344,79 @@
       const cartItems = ref([]);
       const cartMember = ref(null);
       const cartDiscount = ref(0);
+
+      // Table Assignment Modal State for Cart
+      const isSelectTableModalOpen = ref(false);
+      const selectTableFilter = ref('all'); // 'all', 'available', 'occupied'
+      const pendingTableAction = ref(null); // 'sendKitchen', 'checkout', null
+
+      const filteredSelectTables = computed(() => {
+        if (selectTableFilter.value === 'available') {
+          return tables.value.filter(t => t.status === 'available');
+        } else if (selectTableFilter.value === 'occupied') {
+          return tables.value.filter(t => t.status === 'occupied' || t.status === 'billing');
+        }
+        return tables.value;
+      });
+
+      const openSelectTableModal = (action = null) => {
+        pendingTableAction.value = action;
+        selectTableFilter.value = 'all';
+        isSelectTableModalOpen.value = true;
+      };
+
+      const assignTableToCart = (table) => {
+        if (!table) return;
+        orderMode.value = 'dine_in';
+        currentOrderTable.value = table;
+
+        if (table.status === 'available') {
+          table.status = 'occupied';
+          table.guest_count = table.guest_count || table.capacity || 2;
+          table.seated_time = table.seated_time || 'เพิ่งนั่ง';
+          table.opened_at = table.opened_at || new Date().toISOString();
+          if (!table.items) table.items = [];
+          saveTables();
+        } else if (table.items && table.items.length > 0) {
+          // Table already had items: merge table's existing items with newly picked cart items
+          const existingTableItems = (table.items || []).map(i => ({
+            name: i.name,
+            quantity: i.quantity,
+            price: i.price,
+            totalPrice: i.price,
+            modifiersText: i.modifiers || ''
+          }));
+          if (cartItems.value.length > 0) {
+            cartItems.value = [...existingTableItems, ...cartItems.value];
+          } else {
+            cartItems.value = existingTableItems;
+          }
+        }
+
+        isSelectTableModalOpen.value = false;
+
+        if (pendingTableAction.value === 'sendKitchen') {
+          pendingTableAction.value = null;
+          sendCartToKitchen();
+        } else if (pendingTableAction.value === 'checkout') {
+          pendingTableAction.value = null;
+          openCheckoutModal('cart');
+        }
+      };
+
+      const switchToTakeawayFromModal = () => {
+        orderMode.value = 'takeaway';
+        currentOrderTable.value = null;
+        isSelectTableModalOpen.value = false;
+        if (pendingTableAction.value === 'sendKitchen') {
+          pendingTableAction.value = null;
+          sendCartToKitchen();
+        } else if (pendingTableAction.value === 'checkout') {
+          pendingTableAction.value = null;
+          openCheckoutModal('cart');
+        }
+      };
+
       const changeCartQty = (idx, delta) => {
         cartItems.value[idx].quantity += delta;
         if (cartItems.value[idx].quantity <= 0) {
@@ -6197,6 +6451,13 @@
       });
       const sendCartToKitchen = () => {
         if (cartItems.value.length === 0) return;
+        
+        // If dine_in but no table selected yet, prompt user to select a table first!
+        if (orderMode.value === 'dine_in' && !currentOrderTable.value) {
+          openSelectTableModal('sendKitchen');
+          return;
+        }
+
         // Stock deduction
         cartItems.value.forEach(ci => {
           const menuItem = menuItems.value.find(m => m.name === ci.name);
@@ -6395,6 +6656,13 @@
       const openCheckoutModal = (source, target = null) => {
         isMobileCartOpen.value = false;
         isMobileTableDetailOpen.value = false;
+
+        // If checking out from cart in dine_in mode without a table selected, prompt user!
+        if (source === 'cart' && orderMode.value === 'dine_in' && !currentOrderTable.value) {
+          openSelectTableModal('checkout');
+          return;
+        }
+
         checkoutSource.value = source;
         checkoutTargetData.value = target;
         if (source === 'cart') {
@@ -6747,13 +7015,15 @@
       };
       // Full Tax Invoice
       const isFullTaxInvoiceModalOpen = ref(false);
+      const taxInvoiceTargetReceipt = ref(null);
       const taxInvoiceForm = ref({
         customerName: '',
         taxId: '',
         branch: 'สำนักงานใหญ่',
         address: ''
       });
-      const openFullTaxInvoiceModal = () => {
+      const openFullTaxInvoiceModal = (targetReceipt = null) => {
+        taxInvoiceTargetReceipt.value = targetReceipt;
         isFullTaxInvoiceModalOpen.value = true;
       };
       const confirmPrintFullTaxInvoice = () => {
@@ -6762,13 +7032,23 @@
           return;
         }
         let items = [];
-        let subtotal = checkoutAmount.value;
-        if (checkoutSource.value === 'cart') {
+        let subtotal = 0;
+        let receiptNo = 'RC' + Date.now().toString().slice(-6);
+
+        if (taxInvoiceTargetReceipt.value) {
+          const r = taxInvoiceTargetReceipt.value;
+          items = (r.items || []).map(i => ({ name: i.name, quantity: i.quantity || 1, price: i.price || 0 }));
+          subtotal = r.net_amount || r.total || 0;
+          receiptNo = r.receipt_no || r.id || receiptNo;
+        } else if (checkoutSource.value === 'cart') {
           items = cartItems.value.map(i => ({ name: i.name, quantity: i.quantity, price: i.totalPrice }));
+          subtotal = checkoutAmount.value;
         } else if (checkoutTargetData.value && checkoutTargetData.value.items) {
           items = checkoutTargetData.value.items;
+          subtotal = checkoutAmount.value;
         } else {
           items = [{ name: 'ค่าอาหารและเครื่องดื่ม', quantity: 1, price: checkoutAmount.value }];
+          subtotal = checkoutAmount.value;
         }
         let vat = 0;
         let preVat = subtotal;
@@ -6783,7 +7063,7 @@
         printSlipData.value = {
           is_full_tax_invoice: true,
           full_tax_no: 'INV' + Date.now().toString().slice(-8),
-          receipt_no: 'RC' + Date.now().toString().slice(-6),
+          receipt_no: receiptNo,
           created_at: new Date().toISOString(),
           customer_name: taxInvoiceForm.value.customerName,
           tax_id: taxInvoiceForm.value.taxId,
@@ -6827,6 +7107,9 @@
       });
       const completedDeliveryCount = computed(() => {
         return deliveryOrders.value.filter(d => d.delivery_status === 'completed').length;
+      });
+      const cancelledDeliveryCount = computed(() => {
+        return deliveryOrders.value.filter(d => d.delivery_status === 'cancelled').length;
       });
 
       // Delivery Performance Stats Today
@@ -6965,10 +7248,48 @@
         return baseFee + Math.ceil(d - baseKm) * extraFee;
       };
 
-      // Continuous Looping Audio Alarm (Grab / LINE MAN Style)
+      // Continuous Looping Audio Alarm (Grab / LINE MAN Style) & Background Notifications
       let deliveryAudioCtx = null;
       let deliveryAlarmInterval = null;
+      let titleFlashInterval = null;
+      const originalTitle = document.title || 'ระบบจัดการร้านอาหาร';
       const isAlarmPlaying = ref(false);
+      const notificationPermissionState = ref(('Notification' in window) ? Notification.permission : 'denied');
+
+      const requestNotificationPermission = async () => {
+        try {
+          if ('Notification' in window) {
+            const res = await Notification.requestPermission();
+            notificationPermissionState.value = res;
+            if (res === 'granted') {
+              new Notification('✅ เปิดการแจ้งเตือนเดลิเวอรี่สำเร็จ!', {
+                body: 'ระบบจะแจ้งเตือนเมื่อมีออเดอร์ใหม่เข้ามา แม้ว่าจะพับหน้าจออยู่',
+                icon: store.value.logo_url || undefined
+              });
+            }
+          }
+        } catch (e) {}
+      };
+
+      const showDesktopNotification = (order = null) => {
+        try {
+          if ('Notification' in window && Notification.permission === 'granted') {
+            const ordInfo = order ? `ออเดอร์ #${order.id} ยอด ฿${(order.net_amount || 0).toLocaleString()}` : 'มีออเดอร์เดลิเวอรี่ใหม่รอการตอบรับ';
+            const notif = new Notification('🚨 มีออเดอร์เดลิเวอรี่ใหม่เข้ามา!', {
+              body: `${ordInfo} (คลิกเพื่อเปิดดูและรับออเดอร์)`,
+              icon: store.value.logo_url || undefined,
+              tag: 'new_delivery_order',
+              renotify: true
+            });
+            notif.onclick = () => {
+              window.focus();
+              setTab('delivery');
+            };
+          }
+        } catch (e) {
+          console.warn('Desktop notification error:', e);
+        }
+      };
 
       const playDeliveryChime = () => {
         try {
@@ -7002,9 +7323,21 @@
         }
       };
 
-      const startDeliveryAlarm = () => {
+      const startDeliveryAlarm = (order = null) => {
         isAlarmPlaying.value = true;
         playDeliveryChime();
+        showDesktopNotification(order);
+
+        // Flash browser tab title to catch attention even if user is in another tab or minimized
+        if (!titleFlashInterval) {
+          let flag = false;
+          titleFlashInterval = setInterval(() => {
+            flag = !flag;
+            const newCount = deliveryOrders.value.filter(o => o.delivery_status === 'new').length;
+            document.title = flag ? `🚨 (${newCount}) มีออเดอร์ใหม่!` : originalTitle;
+          }, 1000);
+        }
+
         if (deliveryAlarmInterval) clearInterval(deliveryAlarmInterval);
         deliveryAlarmInterval = setInterval(() => {
           const hasNew = deliveryOrders.value.some(o => o.delivery_status === 'new');
@@ -7021,6 +7354,11 @@
           clearInterval(deliveryAlarmInterval);
           deliveryAlarmInterval = null;
         }
+        if (titleFlashInterval) {
+          clearInterval(titleFlashInterval);
+          titleFlashInterval = null;
+        }
+        document.title = originalTitle;
         isAlarmPlaying.value = false;
       };
 
@@ -8986,6 +9324,13 @@ END $$;`;
         reprintKitchenSlip,
         openDiscountModal,
         redeemMemberPoints,
+        // Table Selection for Cart
+        isSelectTableModalOpen,
+        selectTableFilter,
+        filteredSelectTables,
+        openSelectTableModal,
+        assignTableToCart,
+        switchToTakeawayFromModal,
         // Checkout & Receipts
         isCheckoutOpen,
         checkoutAmount,
@@ -9051,6 +9396,7 @@ END $$;`;
         cookingDeliveryCount,
         deliveringDeliveryCount,
         completedDeliveryCount,
+        cancelledDeliveryCount,
         deliveryTodayCompletedOrders,
         deliveryTodaySalesTotal,
         deliveryTodayCodHeldTotal,
@@ -9061,6 +9407,9 @@ END $$;`;
         calculateDeliveryFee,
         testDeliveryDistance,
         isAlarmPlaying,
+        notificationPermissionState,
+        requestNotificationPermission,
+        showDesktopNotification,
         startDeliveryAlarm,
         stopDeliveryAlarm,
         acceptDeliveryOrder,
