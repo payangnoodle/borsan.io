@@ -2,7 +2,10 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
   <title>ระบบจัดการร้านอาหาร</title>
   <!-- Google Fonts: Prompt -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -161,22 +164,86 @@
     .badge-pulse {
       animation: alert-pulse 1.2s infinite ease-in-out;
     }
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    .animate-slideUp {
+      animation: slideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
   </style>
 </head>
 <body class="bg-brand-panel text-slate-800 antialiased h-screen overflow-hidden flex flex-col">
 
-<div id="app" v-cloak class="h-full flex overflow-hidden">
+<div id="app" v-cloak class="h-full flex flex-col overflow-hidden">
+
+  <!-- ========================================================
+       MOBILE TOP APP BAR (VISIBLE ON MOBILE ONLY: md:hidden)
+  ======================================================== -->
+  <header class="md:hidden bg-brand-dark text-white px-3 py-2.5 flex items-center justify-between border-b border-slate-800 shrink-0 z-30 select-none shadow-sm">
+    <!-- Left: Hamburger Drawer Toggle + Screen Title -->
+    <div class="flex items-center space-x-2.5 overflow-hidden">
+      <button @click="isMobileSidebarOpen = true" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white flex items-center justify-center transition shrink-0 cursor-pointer">
+        <i class="fa-solid fa-bars text-base"></i>
+      </button>
+      <div class="leading-tight truncate cursor-pointer" @click="isMobileSidebarOpen = true">
+        <div class="font-bold text-sm truncate flex items-center space-x-1.5">
+          <span>{{ getTabTitle(currentTab) }}</span>
+          <span v-if="currentTab === 'ordering' && orderMode === 'dine_in' && currentOrderTable" class="text-[10px] bg-brand-active px-1.5 py-0.2 rounded font-normal font-mono">
+            {{ currentOrderTable.table_no }}
+          </span>
+        </div>
+        <p class="text-[10px] text-slate-400 truncate">{{ store.name || 'ระบบจัดการร้านอาหาร' }}</p>
+      </div>
+    </div>
+
+    <!-- Right: Quick Action Buttons -->
+    <div class="flex items-center space-x-1.5 shrink-0">
+      <!-- Cart Icon in Ordering View -->
+      <button v-if="currentTab === 'ordering'" @click="isMobileCartOpen = true" class="relative bg-orange-500 hover:bg-orange-600 active:scale-95 text-white px-2.5 py-1.5 rounded-xl font-bold text-xs flex items-center space-x-1 shadow transition cursor-pointer">
+        <i class="fa-solid fa-basket-shopping text-xs"></i>
+        <span v-if="cartItems.length > 0" class="font-mono">฿{{ cartNetAmount.toLocaleString() }}</span>
+        <span v-if="cartItems.length > 0" class="w-4 h-4 rounded-full bg-white text-orange-600 text-[10px] font-extrabold flex items-center justify-center ml-0.5">
+          {{ cartItems.length }}
+        </span>
+      </button>
+
+      <!-- Table Detail Quick Button in Tables View if table selected -->
+      <button v-if="currentTab === 'tables' && selectedTable" @click="isMobileTableDetailOpen = true" class="bg-brand-active hover:bg-sky-800 active:scale-95 text-white px-2.5 py-1.5 rounded-xl font-bold text-xs flex items-center space-x-1 shadow transition cursor-pointer">
+        <i class="fa-solid fa-table-cells text-xs"></i>
+        <span>โต๊ะ {{ selectedTable.table_no }}</span>
+      </button>
+
+      <!-- Delivery Alert Bell -->
+      <button @click="setTab('delivery')" class="relative w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white flex items-center justify-center transition shrink-0 cursor-pointer">
+        <i class="fa-solid fa-bell text-xs"></i>
+        <span v-if="newDeliveryCount > 0" class="badge-pulse absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full text-[9px] font-bold flex items-center justify-center">
+          {{ newDeliveryCount }}
+        </span>
+      </button>
+
+      <!-- PIN Lock -->
+      <button @click="openPinModal" title="ล็อกหน้าจอ PIN" class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-400 hover:text-white flex items-center justify-center transition shrink-0 cursor-pointer">
+        <i class="fa-solid fa-lock text-xs"></i>
+      </button>
+    </div>
+  </header>
 
   <!-- ========================================================
        MAIN CONTAINER: 2-TIER SIDEBAR + WORKSPACE AREA
   ======================================================== -->
-  <div class="flex-1 flex overflow-hidden">
+  <div class="flex-1 flex overflow-hidden relative">
 
+    <!-- Mobile Sidebar Backdrop Overlay -->
+    <div v-if="isMobileSidebarOpen" @click="isMobileSidebarOpen = false" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 md:hidden transition-opacity"></div>
 
     <!-- ----------------------------------------------------
          TIER 1: SLATE-800 DARK SIDEBAR (#1E293B)
+         Desktop: Left static sidebar (md:w-56)
+         Mobile: Slide-out Drawer (w-64 -translate-x-full z-50)
     ----------------------------------------------------- -->
-    <aside class="w-20 md:w-56 bg-brand-dark text-slate-300 flex flex-col shrink-0 border-r border-slate-800 z-20 select-none shadow-lg">
+    <aside :class="isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
+      class="fixed inset-y-0 left-0 z-50 w-64 bg-brand-dark text-slate-300 flex flex-col shrink-0 border-r border-slate-800 select-none shadow-2xl transition-transform duration-300 ease-in-out md:static md:w-56 md:shadow-lg">
       
       <!-- Store Brand -->
       <div class="p-3 border-b border-slate-700/60 flex items-center justify-between">
@@ -185,7 +252,7 @@
             <img v-if="store.logo_url" :src="store.logo_url" alt="Logo" class="w-full h-full object-cover">
             <span v-else class="text-orange-500 font-extrabold text-xl">W</span>
           </div>
-          <div class="hidden md:block leading-tight truncate">
+          <div class="leading-tight truncate">
             <h1 class="text-white font-bold text-sm tracking-wide truncate" :title="store.name">
               {{ store.name || 'ชื่อร้านอาหาร' }}
             </h1>
@@ -193,13 +260,20 @@
           </div>
         </div>
 
-        <!-- Notification Bell -->
-        <button @click="setTab('delivery')" class="relative p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">
-          <i class="fa-solid fa-bell text-base"></i>
-          <span v-if="newDeliveryCount > 0" class="badge-pulse absolute top-1 right-1 w-4 h-4 bg-rose-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center">
-            {{ newDeliveryCount }}
-          </span>
-        </button>
+        <div class="flex items-center space-x-1">
+          <!-- Notification Bell on desktop -->
+          <button @click="setTab('delivery')" class="hidden md:inline-flex relative p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer">
+            <i class="fa-solid fa-bell text-base"></i>
+            <span v-if="newDeliveryCount > 0" class="badge-pulse absolute top-1 right-1 w-4 h-4 bg-rose-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center">
+              {{ newDeliveryCount }}
+            </span>
+          </button>
+          
+          <!-- Close Button on Mobile Drawer -->
+          <button @click="isMobileSidebarOpen = false" class="md:hidden p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer">
+            <i class="fa-solid fa-xmark text-lg"></i>
+          </button>
+        </div>
       </div>
 
       <!-- Tier 1 Navigation Items (12 Items) -->
@@ -210,8 +284,8 @@
           :class="currentTab === 'tables' ? 'bg-brand-active text-white font-semibold shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'" 
           class="w-full flex items-center px-3 py-2.5 rounded-lg transition group">
           <i class="fa-solid fa-table-cells text-base w-6 text-center group-hover:scale-110 transition-transform"></i>
-          <span class="hidden md:inline ml-2.5">จัดการโต๊ะ</span>
-          <span v-if="occupiedTableCount > 0" class="hidden md:inline-block ml-auto text-[10px] bg-sky-900/80 text-sky-200 px-1.5 py-0.5 rounded font-mono">
+          <span class="ml-2.5">จัดการโต๊ะ</span>
+          <span v-if="occupiedTableCount > 0" class="ml-auto text-[10px] bg-sky-900/80 text-sky-200 px-1.5 py-0.5 rounded font-mono">
             {{ occupiedTableCount }}
           </span>
         </button>
@@ -221,8 +295,8 @@
           :class="currentTab === 'ordering' ? 'bg-brand-active text-white font-semibold shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'" 
           class="w-full flex items-center px-3 py-2.5 rounded-lg transition group">
           <i class="fa-solid fa-cash-register text-base w-6 text-center group-hover:scale-110 transition-transform"></i>
-          <span class="hidden md:inline ml-2.5">สั่งและชำระเงิน</span>
-          <span v-if="cartItems && cartItems.length > 0" class="hidden md:inline-block ml-auto text-[10px] bg-orange-500 text-white font-bold px-1.5 py-0.5 rounded-full">
+          <span class="ml-2.5">สั่งและชำระเงิน</span>
+          <span v-if="cartItems && cartItems.length > 0" class="ml-auto text-[10px] bg-orange-500 text-white font-bold px-1.5 py-0.5 rounded-full">
             {{ cartItems.length }}
           </span>
         </button>
@@ -232,7 +306,7 @@
           :class="currentTab === 'delivery' ? 'bg-brand-active text-white font-semibold shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'" 
           class="w-full flex items-center px-3 py-2.5 rounded-lg transition group relative">
           <i class="fa-solid fa-motorcycle text-base w-6 text-center group-hover:scale-110 transition-transform"></i>
-          <span class="hidden md:inline ml-2.5">เดลิเวอรี่</span>
+          <span class="ml-2.5">เดลิเวอรี่</span>
           <span v-if="newDeliveryCount > 0" class="ml-auto text-[10px] bg-rose-500 text-white font-bold px-1.5 py-0.5 rounded-full">
             {{ newDeliveryCount }}
           </span>
@@ -243,7 +317,7 @@
           :class="currentTab === 'loyalty' ? 'bg-brand-active text-white font-semibold shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'" 
           class="w-full flex items-center px-3 py-2.5 rounded-lg transition group">
           <i class="fa-solid fa-id-card text-base w-6 text-center group-hover:scale-110 transition-transform"></i>
-          <span class="hidden md:inline ml-2.5">บัตรสะสมแต้ม</span>
+          <span class="ml-2.5">บัตรสะสมแต้ม</span>
         </button>
 
         <!-- 5. ออเดอร์ที่เปิดอยู่ -->
@@ -251,8 +325,8 @@
           :class="currentTab === 'activeOrders' ? 'bg-brand-active text-white font-semibold shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'" 
           class="w-full flex items-center px-3 py-2.5 rounded-lg transition group">
           <i class="fa-solid fa-receipt text-base w-6 text-center group-hover:scale-110 transition-transform"></i>
-          <span class="hidden md:inline ml-2.5">ออเดอร์ที่เปิดอยู่</span>
-          <span v-if="activeOrdersList.length > 0" class="hidden md:inline-block ml-auto text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-mono">
+          <span class="ml-2.5">ออเดอร์ที่เปิดอยู่</span>
+          <span v-if="activeOrdersList.length > 0" class="ml-auto text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-mono">
             {{ activeOrdersList.length }}
           </span>
         </button>
@@ -262,7 +336,7 @@
           :class="currentTab === 'receiptHistory' ? 'bg-brand-active text-white font-semibold shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'" 
           class="w-full flex items-center px-3 py-2.5 rounded-lg transition group">
           <i class="fa-solid fa-file-invoice-dollar text-base w-6 text-center group-hover:scale-110 transition-transform"></i>
-          <span class="hidden md:inline ml-2.5">ประวัติใบเสร็จ</span>
+          <span class="ml-2.5">ประวัติใบเสร็จ</span>
         </button>
 
         <!-- 7. สินค้าคงคลัง (สวิตช์ Sold Out ด่วน) -->
@@ -270,7 +344,7 @@
           :class="currentTab === 'inventory' ? 'bg-brand-active text-white font-semibold shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'" 
           class="w-full flex items-center px-3 py-2.5 rounded-lg transition group">
           <i class="fa-solid fa-boxes-stacked text-base w-6 text-center group-hover:scale-110 transition-transform"></i>
-          <span class="hidden md:inline ml-2.5">สินค้าคงคลัง</span>
+          <span class="ml-2.5">สินค้าคงคลัง</span>
         </button>
 
         <!-- 8. รอบการขาย -->
@@ -278,7 +352,7 @@
           :class="currentTab === 'shift' ? 'bg-brand-active text-white font-semibold shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'" 
           class="w-full flex items-center px-3 py-2.5 rounded-lg transition group">
           <i class="fa-solid fa-vault text-base w-6 text-center group-hover:scale-110 transition-transform"></i>
-          <span class="hidden md:inline ml-2.5">รอบการขาย</span>
+          <span class="ml-2.5">รอบการขาย</span>
         </button>
 
         <!-- 9. เมนูและโปรโมชั่น (เปิด Tier 2) -->
@@ -286,8 +360,8 @@
           :class="currentTab === 'menuPromo' ? 'bg-brand-active text-white font-semibold shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'" 
           class="w-full flex items-center px-3 py-2.5 rounded-lg transition group">
           <i class="fa-solid fa-utensils text-base w-6 text-center group-hover:scale-110 transition-transform"></i>
-          <span class="hidden md:inline ml-2.5">เมนูและโปรโมชั่น</span>
-          <i class="fa-solid fa-chevron-right text-[10px] ml-auto hidden md:inline text-slate-400"></i>
+          <span class="ml-2.5">เมนูและโปรโมชั่น</span>
+          <i class="fa-solid fa-chevron-right text-[10px] ml-auto text-slate-400"></i>
         </button>
 
         <!-- 10. รายงาน -->
@@ -295,7 +369,7 @@
           :class="currentTab === 'reports' ? 'bg-brand-active text-white font-semibold shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'" 
           class="w-full flex items-center px-3 py-2.5 rounded-lg transition group">
           <i class="fa-solid fa-chart-pie text-base w-6 text-center group-hover:scale-110 transition-transform"></i>
-          <span class="hidden md:inline ml-2.5">รายงาน</span>
+          <span class="ml-2.5">รายงาน</span>
         </button>
 
         <!-- 11. ตั้งค่า (เปิด Tier 2) -->
@@ -303,8 +377,8 @@
           :class="currentTab === 'settings' ? 'bg-brand-active text-white font-semibold shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'" 
           class="w-full flex items-center px-3 py-2.5 rounded-lg transition group">
           <i class="fa-solid fa-gear text-base w-6 text-center group-hover:scale-110 transition-transform"></i>
-          <span class="hidden md:inline ml-2.5">ตั้งค่า</span>
-          <i class="fa-solid fa-chevron-right text-[10px] ml-auto hidden md:inline text-slate-400"></i>
+          <span class="ml-2.5">ตั้งค่า</span>
+          <i class="fa-solid fa-chevron-right text-[10px] ml-auto text-slate-400"></i>
         </button>
 
         <!-- 12. คู่มือการใช้งาน -->
@@ -312,7 +386,7 @@
           :class="currentTab === 'manual' ? 'bg-brand-active text-white font-semibold shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white'" 
           class="w-full flex items-center px-3 py-2.5 rounded-lg transition group">
           <i class="fa-solid fa-circle-question text-base w-6 text-center group-hover:scale-110 transition-transform"></i>
-          <span class="hidden md:inline ml-2.5">คู่มือการใช้งาน</span>
+          <span class="ml-2.5">คู่มือการใช้งาน</span>
         </button>
       </nav>
 
@@ -320,14 +394,14 @@
       <div class="p-2.5 border-t border-slate-700/60 space-y-1.5">
         <button @click="openPinModal" class="w-full bg-brand-accent hover:bg-orange-600 text-white font-bold py-2.5 px-3 rounded-xl shadow-md transition flex items-center justify-center space-x-2 text-xs cursor-pointer active:scale-95">
           <i class="fa-solid fa-lock"></i>
-          <span class="hidden md:inline">กลับหน้า PIN</span>
+          <span>กลับหน้า PIN</span>
         </button>
         <div class="flex items-center justify-between text-[11px] text-slate-400 px-1 pt-1 font-mono">
           <button @click="kickCashDrawer" title="เปิดลิ้นชักเก็บเงิน" class="hover:text-amber-400 transition flex items-center space-x-1 cursor-pointer">
             <i class="fa-solid fa-vault text-xs"></i>
-            <span class="hidden md:inline text-[10px]">ลิ้นชัก</span>
+            <span class="text-[10px]">ลิ้นชัก</span>
           </button>
-          <div class="hidden md:flex items-center space-x-1 text-slate-400">
+          <div class="flex items-center space-x-1 text-slate-400">
             <i class="fa-regular fa-clock text-slate-500"></i>
             <span>{{ currentTimeString }}</span>
           </div>
@@ -337,9 +411,10 @@
 
     <!-- ----------------------------------------------------
          TIER 2: LIGHT GRAY SUBMENU (#F8FAFC)
-         ALWAYS VISIBLE IN SETTINGS & MENU_PROMO!
+         Desktop: Left static sub-sidebar (md:w-60)
+         Mobile: Hidden on mobile (Tier 2 displayed as top horizontal tabs!)
     ----------------------------------------------------- -->
-    <aside v-if="currentTab === 'settings' || currentTab === 'menuPromo'" class="w-56 md:w-60 bg-brand-subbg border-r border-slate-200 flex flex-col shrink-0 z-10 select-none animate-fadeIn transition-all">
+    <aside v-if="currentTab === 'settings' || currentTab === 'menuPromo'" class="hidden md:flex md:w-60 bg-brand-subbg border-r border-slate-200 flex-col shrink-0 z-10 select-none animate-fadeIn transition-all">
       <div class="p-3 border-b border-slate-200 font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center justify-between">
         <span class="flex items-center space-x-1.5">
           <i class="fa-solid" :class="currentTab === 'settings' ? 'fa-gear text-brand-active' : 'fa-utensils text-brand-accent'"></i>
@@ -460,7 +535,7 @@
       <!-- ===================================================
            VIEW 1: จัดการโต๊ะ (TABLE MANAGEMENT)
       ==================================================== -->
-      <section v-if="currentTab === 'tables'" class="h-full flex flex-col md:flex-row overflow-hidden">
+      <section v-if="currentTab === 'tables'" class="h-full flex flex-col md:flex-row overflow-hidden relative">
         
         <!-- Left: Table Layout Grid -->
         <div class="flex-1 flex flex-col overflow-hidden border-r border-slate-200 bg-slate-50">
@@ -530,7 +605,10 @@
         </div>
 
         <!-- Right: Table Detail & Action Panel -->
-        <div class="w-full md:w-80 lg:w-96 bg-white border-l border-slate-200 flex flex-col shrink-0 shadow-lg">
+        <!-- Mobile Backdrop Overlay when table detail drawer is open -->
+        <div v-if="selectedTable && isMobileTableDetailOpen" @click="isMobileTableDetailOpen = false" class="md:hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 transition-opacity"></div>
+
+        <div :class="(selectedTable && isMobileTableDetailOpen) ? 'fixed inset-x-0 bottom-0 max-h-[85vh] z-40 flex flex-col bg-white rounded-t-3xl shadow-2xl border-t border-slate-200 animate-slideUp' : 'hidden md:flex md:w-80 lg:w-96 bg-white border-l border-slate-200 flex-col shrink-0 shadow-lg'">
           
           <!-- Selected Table Header -->
           <div class="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
@@ -545,9 +623,15 @@
                 <span v-if="selectedTable.status !== 'available'"> | นั่งแล้ว {{ selectedTable.seated_time }}</span>
               </p>
             </div>
-            <span v-if="selectedTable" :class="getTableBadgeClass(selectedTable)" class="px-2.5 py-1 rounded-full text-xs font-bold font-mono">
-              {{ selectedTable.capacity }} ที่นั่ง
-            </span>
+            <div class="flex items-center space-x-2">
+              <span v-if="selectedTable" :class="getTableBadgeClass(selectedTable)" class="px-2.5 py-1 rounded-full text-xs font-bold font-mono">
+                {{ selectedTable.capacity }} ที่นั่ง
+              </span>
+              <!-- Mobile Close Button -->
+              <button @click="isMobileTableDetailOpen = false" class="md:hidden p-1.5 text-slate-400 hover:text-slate-700 text-lg cursor-pointer">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
           </div>
 
           <!-- Detail Body -->
@@ -658,10 +742,10 @@
       <!-- ===================================================
            VIEW 2: สั่งและชำระเงิน (MENU & ORDERING CART)
       ==================================================== -->
-      <section v-if="currentTab === 'ordering'" class="h-full flex flex-col md:flex-row overflow-hidden">
+      <section v-if="currentTab === 'ordering'" class="h-full flex flex-col md:flex-row overflow-hidden relative">
         
         <!-- Left: Category Bar & Menu Grid -->
-        <div class="flex-1 flex flex-col overflow-hidden bg-slate-50">
+        <div class="flex-1 flex flex-col overflow-hidden bg-slate-50 pb-20 md:pb-0">
           
           <!-- Mode & Search Bar -->
           <div class="p-3 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0 text-xs">
@@ -752,8 +836,35 @@
           </div>
         </div>
 
+        <!-- Mobile Floating Cart Bar (Bottom Bar) -->
+        <div v-if="cartItems.length > 0 && !isMobileCartOpen" @click="isMobileCartOpen = true"
+          class="md:hidden fixed inset-x-3 bottom-3 z-30 bg-slate-900/95 text-white p-3.5 rounded-2xl shadow-2xl flex items-center justify-between cursor-pointer border border-slate-700/60 backdrop-blur-md animate-slideUp">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-brand-active text-white flex items-center justify-center font-bold text-base relative shadow">
+              <i class="fa-solid fa-basket-shopping"></i>
+              <span class="absolute -top-1.5 -right-1.5 bg-amber-400 text-slate-950 text-[10px] font-extrabold w-5 h-5 rounded-full flex items-center justify-center border-2 border-slate-900 shadow">
+                {{ cartItems.reduce((s, i) => s + i.quantity, 0) }}
+              </span>
+            </div>
+            <div>
+              <div class="text-[11px] font-medium text-slate-300">
+                {{ orderMode === 'dine_in' ? (currentOrderTable ? 'โต๊ะ ' + currentOrderTable.table_no : 'โต๊ะ (ยังไม่เลือก)') : 'รับกลับบ้าน (คิว ' + takeawayQueueNo + ')' }}
+              </div>
+              <div class="text-base font-extrabold font-mono text-white">฿{{ cartNetAmount.toLocaleString() }}</div>
+            </div>
+          </div>
+          <div class="flex items-center space-x-1.5 bg-brand-active hover:bg-sky-600 text-white px-3.5 py-2 rounded-xl font-bold text-xs shadow transition">
+            <span>ดูบิล / คิดเงิน</span>
+            <i class="fa-solid fa-chevron-right text-[10px]"></i>
+          </div>
+        </div>
+
+        <!-- Mobile Cart Backdrop -->
+        <div v-if="isMobileCartOpen" @click="isMobileCartOpen = false" class="md:hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 transition-opacity"></div>
+
         <!-- Right: Current Cart / Ticket Summary Panel -->
-        <div class="w-full md:w-80 lg:w-96 bg-white border-l border-slate-200 flex flex-col shrink-0 shadow-lg">
+        <div :class="isMobileCartOpen ? 'fixed inset-x-0 bottom-0 top-12 z-40 max-h-[92vh] flex flex-col rounded-t-3xl shadow-2xl animate-slideUp' : 'hidden md:flex md:w-80 lg:w-96 flex-col shrink-0'"
+          class="w-full bg-white border-l border-slate-200 shadow-lg">
           
           <!-- Ticket Header -->
           <div class="p-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
@@ -770,6 +881,10 @@
               </button>
               <button @click="clearCurrentCart" class="text-slate-400 hover:text-rose-600 text-xs transition">
                 <i class="fa-solid fa-trash-can mr-1"></i> ล้างบิล
+              </button>
+              <!-- Close Mobile Drawer Button -->
+              <button @click="isMobileCartOpen = false" class="md:hidden w-7 h-7 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-600 flex items-center justify-center text-xs ml-1 cursor-pointer">
+                <i class="fa-solid fa-xmark"></i>
               </button>
             </div>
           </div>
@@ -1729,6 +1844,16 @@
            VIEW 9: เมนูและโปรโมชั่น (MENU & PROMOTIONS - 4 SUB-TABS)
       ==================================================== -->
       <section v-if="currentTab === 'menuPromo'" class="h-full flex flex-col overflow-hidden p-3 md:p-5 bg-slate-100">
+        <!-- Mobile Horizontal Sub-Tab Pills for Menu & Promo -->
+        <div class="md:hidden flex items-center space-x-1.5 overflow-x-auto pb-2 mb-2 shrink-0 select-none">
+          <button v-for="st in menuSubTabs" :key="st.id" @click="setSubTab(st.id)"
+            :class="currentSubTab === st.id ? 'bg-brand-active text-white font-bold shadow-sm' : 'bg-white text-slate-600 border border-slate-200'"
+            class="px-3 py-1.5 rounded-full text-xs whitespace-nowrap shrink-0 flex items-center space-x-1.5 transition">
+            <i :class="'fa-solid ' + st.icon"></i>
+            <span>{{ st.name }}</span>
+          </button>
+        </div>
+
         <div class="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex-1 flex flex-col overflow-hidden">
           
           <!-- SUB-TAB 1: รายการอาหาร (menuItems) -->
@@ -2561,6 +2686,15 @@
            VIEW 11: ตั้งค่าระบบ (SETTINGS - 10 SUB-TABS)
       ==================================================== -->
       <section v-if="currentTab === 'settings'" class="flex-1 h-full flex flex-col overflow-hidden bg-slate-100 min-w-0">
+        <!-- Mobile Horizontal Sub-Tab Pills for Settings -->
+        <div class="md:hidden flex items-center space-x-1.5 overflow-x-auto p-2.5 bg-white border-b border-slate-200 shrink-0 select-none">
+          <button v-for="st in settingsSubTabs" :key="st.id" @click="setSubTab(st.id)"
+            :class="currentSubTab === st.id ? 'bg-brand-active text-white font-bold shadow-sm' : 'bg-slate-100 text-slate-600 border border-slate-200'"
+            class="px-3 py-1.5 rounded-full text-xs whitespace-nowrap shrink-0 flex items-center space-x-1.5 transition">
+            <i :class="'fa-solid ' + st.icon"></i>
+            <span>{{ st.name }}</span>
+          </button>
+        </div>
         
         <!-- MAIN SETTINGS SCROLLABLE WORKSPACE -->
         <div class="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 scrollbar-thin">
@@ -3601,9 +3735,9 @@
   <!-- ========================================================
        MODAL 3: CHECKOUT & PAYMENT MODAL
   ======================================================== -->
-  <div v-if="isCheckoutOpen" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 select-none">
-    <div class="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl flex flex-col text-xs">
-      <div class="p-4 bg-brand-dark text-white flex justify-between items-center">
+  <div v-if="isCheckoutOpen" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 select-none">
+    <div class="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl flex flex-col max-h-[92vh] text-xs">
+      <div class="p-4 bg-brand-dark text-white flex justify-between items-center shrink-0">
         <div>
           <h3 class="font-bold text-base">ชำระเงิน (Checkout)</h3>
           <span class="text-orange-400 font-mono font-bold">
@@ -3615,7 +3749,7 @@
         </button>
       </div>
 
-      <div class="p-4 space-y-4">
+      <div class="p-4 space-y-4 overflow-y-auto flex-1 scrollbar-thin">
         <!-- Amount to Pay -->
         <div class="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-center space-y-1">
           <span class="text-xs text-slate-500">ยอดที่ต้องชำระทั้งหมด:</span>
@@ -5060,13 +5194,60 @@
       } catch (e) {}
 
       // --------------------------------------------------
-      // 1. CENTRALIZED ROUTER STATE (currentTab, currentSubTab)
+      // 1. CENTRALIZED ROUTER & MOBILE RESPONSIVE STATE
       // --------------------------------------------------
       const currentTab = ref('tables'); // 'tables', 'ordering', 'delivery', 'loyalty', 'activeOrders', 'receiptHistory', 'inventory', 'shift', 'menuPromo', 'reports', 'settings', 'manual'
       const currentSubTab = ref('storeInfo');
       const showTier2 = ref(false); // Only active when on settings or menuPromo
+
+      // Mobile Responsive Drawers & Sheets
+      const isMobileSidebarOpen = ref(false);
+      const isMobileCartOpen = ref(false);
+      const isMobileTableDetailOpen = ref(false);
+
+      const tabTitleMap = {
+        tables: 'จัดการโต๊ะ',
+        ordering: 'สั่งและชำระเงิน',
+        delivery: 'เดลิเวอรี่',
+        loyalty: 'บัตรสะสมแต้ม',
+        activeOrders: 'ออเดอร์ในครัว',
+        receiptHistory: 'ประวัติบิล / ใบเสร็จ',
+        inventory: 'สต็อกวัตถุดิบ',
+        shift: 'รอบการขาย / กะ',
+        menuPromo: 'เมนูและโปรโมชั่น',
+        reports: 'รายงานยอดขาย',
+        settings: 'ตั้งค่าระบบ',
+        manual: 'คู่มือการใช้งาน'
+      };
+      const getTabTitle = (tab) => tabTitleMap[tab] || 'ระบบจัดการหน้าร้าน POS';
+
+      const menuSubTabs = [
+        { id: 'menuItems', name: 'รายการอาหาร', icon: 'fa-bowl-food' },
+        { id: 'modifiers', name: 'ท็อปปิ้ง', icon: 'fa-layer-group' },
+        { id: 'categories', name: 'หมวดหมู่อาหาร', icon: 'fa-tags' },
+        { id: 'promotions', name: 'โปรโมชั่น', icon: 'fa-percent' }
+      ];
+
+      const settingsSubTabs = [
+        { id: 'storeInfo', name: '1. ข้อมูลร้าน', icon: 'fa-store' },
+        { id: 'payment', name: '2. ภาษี/บริการ', icon: 'fa-credit-card' },
+        { id: 'qrPayment', name: '3. QR พร้อมเพย์', icon: 'fa-qrcode' },
+        { id: 'shiftSettings', name: '4. รอบขาย/PIN', icon: 'fa-clock-rotate-left' },
+        { id: 'deliveryMenu', name: '5. เดลิเวอรี่', icon: 'fa-motorcycle' },
+        { id: 'receiptFormat', name: '6. ใบเสร็จ', icon: 'fa-receipt' },
+        { id: 'tableConfig', name: '7. จัดการโต๊ะ', icon: 'fa-table-cells' },
+        { id: 'printer', name: '8. เครื่องพิมพ์', icon: 'fa-print' },
+        { id: 'staff', name: '9. พนักงาน', icon: 'fa-users' },
+        { id: 'basic', name: '10. ข้อมูลสาขา', icon: 'fa-sliders' }
+      ];
+
       const setTab = (tab, subTab = null) => {
         currentTab.value = tab;
+        isMobileSidebarOpen.value = false;
+        isMobileCartOpen.value = false;
+        if (tab !== 'tables') {
+          isMobileTableDetailOpen.value = false;
+        }
         if (tab === 'settings') {
           showTier2.value = true;
           currentSubTab.value = subTab || 'storeInfo';
@@ -5451,10 +5632,14 @@
       const billingTableCount = computed(() => tables.value.filter(t => t.status === 'billing').length);
       const selectTable = (t) => {
         selectedTable.value = t;
+        isMobileTableDetailOpen.value = true;
       };
       const selectTableByNo = (no) => {
         const target = tables.value.find(t => t.table_no === no);
-        if (target) selectedTable.value = target;
+        if (target) {
+          selectedTable.value = target;
+          isMobileTableDetailOpen.value = true;
+        }
       };
       const getTableByNo = (no) => {
         return tables.value.find(t => t.table_no === no);
@@ -5468,6 +5653,7 @@
         selectedTable.value.opened_at = new Date().toISOString();
         if (!selectedTable.value.items) selectedTable.value.items = [];
         saveTables();
+        isMobileTableDetailOpen.value = false;
         goToOrderingForTable(selectedTable.value);
       };
       const cancelTableOrder = (table) => {
@@ -5488,6 +5674,7 @@
               cartItems.value = [];
             }
             saveTables();
+            isMobileTableDetailOpen.value = false;
             alert(`คืนโต๊ะ ${tbl.table_no} เป็นโต๊ะว่างเรียบร้อยแล้ว`);
             setTab('tables');
           }
@@ -5502,6 +5689,7 @@
           };
           deleteConfirmPin.value = '';
           deletePinError.value = '';
+          isMobileTableDetailOpen.value = false;
           isDeleteConfirmModalOpen.value = true;
         }
       };
@@ -5517,6 +5705,7 @@
           totalPrice: i.price,
           modifiersText: i.modifiers || ''
         }));
+        isMobileTableDetailOpen.value = false;
         setTab('ordering');
       };
       const getTableCardClass = (t) => {
@@ -6056,6 +6245,7 @@
         }
 
         const printMsg = willPrintKOT ? ' (พร้อมสั่งพิมพ์ใบแจ้งครัว)' : ' (ไม่พิมพ์ใบครัว)';
+        isMobileCartOpen.value = false;
         if (orderMode.value === 'dine_in' && currentOrderTable.value) {
           alert('ส่งรายการอาหารเข้าครัว (KOT) ของโต๊ะ ' + currentOrderTable.value.table_no + ' เรียบร้อยแล้ว!' + printMsg);
           setTab('tables');
@@ -6203,6 +6393,8 @@
         return receiptHistory.value.filter(r => (r.receipt_no && r.receipt_no.toLowerCase().includes(q)) || (r.table_no && r.table_no.includes(q)));
       });
       const openCheckoutModal = (source, target = null) => {
+        isMobileCartOpen.value = false;
+        isMobileTableDetailOpen.value = false;
         checkoutSource.value = source;
         checkoutTargetData.value = target;
         if (source === 'cart') {
@@ -8677,13 +8869,19 @@ END $$;`;
         }
       });
       return {
-        // Router
+        // Router & Mobile Responsive
         currentTab,
         currentSubTab,
         showTier2,
         setTab,
         setSubTab,
         selectTier1,
+        isMobileSidebarOpen,
+        isMobileCartOpen,
+        isMobileTableDetailOpen,
+        getTabTitle,
+        menuSubTabs,
+        settingsSubTabs,
         // PIN
         isPinLocked,
         enteredPin,
