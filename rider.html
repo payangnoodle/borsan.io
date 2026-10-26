@@ -694,6 +694,7 @@
         if (!confirm(msg)) return;
 
         order.delivery_status = 'completed';
+        order.slip_image = null; // Auto-purge slip to save database space
         saveOrders();
 
         if (watchId) navigator.geolocation.clearWatch(watchId);
@@ -703,6 +704,13 @@
           orderId: order.id,
           newStatus: 'completed'
         });
+
+        const sb = window.getWposSupabaseClient ? window.getWposSupabaseClient() : null;
+        if (sb) {
+          try {
+            sb.from('delivery_orders').update({ delivery_status: 'completed', slip_image: null }).eq('id', order.id);
+          } catch (e) {}
+        }
 
         alert(`จัดส่งออเดอร์ #${order.id} สำเร็จเรียบร้อยแล้ว!`);
       };

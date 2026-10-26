@@ -334,6 +334,12 @@
             <span>ค่าอาหาร:</span>
             <span class="font-mono">฿{{ (order.subtotal || 0).toLocaleString() }}</span>
           </div>
+          <div v-if="order.discount > 0" class="flex justify-between text-emerald-600 font-bold">
+            <span class="flex items-center">
+              <i class="fa-solid fa-tag text-[9px] mr-1"></i>ส่วนลด ({{ order.discount_name || 'โปรโมชั่น' }}):
+            </span>
+            <span class="font-mono">-฿{{ (order.discount || 0).toLocaleString() }}</span>
+          </div>
           <div class="flex justify-between">
             <span>ค่าจัดส่ง:</span>
             <span class="font-mono">฿{{ (order.delivery_fee || 0).toLocaleString() }}</span>
@@ -344,9 +350,31 @@
           </div>
           <div class="flex justify-between items-center pt-1">
             <span>สถานะชำระเงิน:</span>
-            <span class="px-2 py-0.5 rounded text-[10px] font-bold"
-              :class="order.payment_method === 'promptpay' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'">
-              {{ order.payment_method === 'promptpay' ? 'ชำระผ่าน PromptPay แล้ว' : 'เก็บเงินสดปลายทาง (COD)' }}
+            <div class="flex items-center space-x-1.5">
+              <span v-if="order.payment_method === 'promptpay' && order.payment_status === 'pending_verification'"
+                class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 flex items-center">
+                <i class="fa-solid fa-clock-rotate-left mr-1"></i> รอร้านตรวจสอบสลิป
+              </span>
+              <span v-else-if="order.payment_method === 'promptpay'"
+                class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 flex items-center">
+                <i class="fa-solid fa-circle-check mr-1"></i> โอนผ่าน PromptPay เรียบร้อย
+              </span>
+              <span v-else class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
+                เก็บเงินสดปลายทาง (COD)
+              </span>
+            </div>
+          </div>
+          <div v-if="order.slip_image" class="flex justify-between items-center pt-1.5 border-t border-slate-100 mt-1 text-[11px]">
+            <span class="text-slate-500">หลักฐานการโอน:</span>
+            <button @click="isViewSlipModalOpen = true" class="text-brand-active hover:underline font-bold flex items-center space-x-1 cursor-pointer">
+              <i class="fa-solid fa-file-invoice-dollar"></i>
+              <span>ดูสลิปที่แนบไว้</span>
+            </button>
+          </div>
+          <div v-else-if="order.payment_method === 'promptpay' && order.delivery_status === 'completed'" class="flex justify-between items-center pt-1.5 border-t border-slate-100 mt-1 text-[11px] text-slate-500">
+            <span>หลักฐานการโอน:</span>
+            <span class="text-emerald-600 font-medium text-[10px]">
+              <i class="fa-solid fa-check mr-0.5"></i> ตรวจสอบและยืนยันแล้ว
             </span>
           </div>
         </div>
@@ -423,6 +451,30 @@
     </div>
   </div>
 
+  <!-- Customer View Slip Modal -->
+  <div v-if="isViewSlipModalOpen && order && order.slip_image" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click="isViewSlipModalOpen = false">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-4 space-y-3 relative overflow-hidden" @click.stop>
+      <div class="flex justify-between items-center pb-2 border-b border-slate-100">
+        <h3 class="font-bold text-slate-800 text-sm flex items-center">
+          <i class="fa-solid fa-file-invoice-dollar text-brand-active mr-1.5"></i>
+          สลิปหลักฐานการโอนเงิน
+        </h3>
+        <button @click="isViewSlipModalOpen = false" class="text-slate-400 hover:text-slate-600 text-lg p-1 cursor-pointer">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="max-h-[68vh] overflow-auto rounded-2xl bg-slate-100 flex items-center justify-center p-1">
+        <img :src="order.slip_image" alt="Slip" class="max-w-full max-h-[65vh] object-contain rounded-xl">
+      </div>
+      <div class="text-[11px] text-center text-slate-500">
+        สถานะ: <strong :class="order.payment_status === 'paid' ? 'text-emerald-600' : 'text-amber-600'">{{ order.payment_status === 'paid' ? 'ร้านตรวจสอบและยืนยันยอดเงินแล้ว' : 'รอทางร้านตรวจสอบยอดเงิน' }}</strong>
+      </div>
+      <button @click="isViewSlipModalOpen = false" class="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer">
+        ปิดหน้าต่าง
+      </button>
+    </div>
+  </div>
+
 </div>
 
 <!-- ========================================================
@@ -465,6 +517,7 @@
       }
       const orderId = ref(targetId || '');
       const isSwitchOrderModalOpen = ref(false);
+      const isViewSlipModalOpen = ref(false);
 
       const store = ref(safeGetJSON('wpos_store', {
         name: '',
@@ -865,6 +918,7 @@
         startGpsSimulation,
         simulateStatusNext,
         isSwitchOrderModalOpen,
+        isViewSlipModalOpen,
         customerOrdersList,
         selectOrder
       };
